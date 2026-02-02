@@ -22,4 +22,4 @@ services:
 
 networks:
   osrs-network:
-    external: true
+    driver: bridge

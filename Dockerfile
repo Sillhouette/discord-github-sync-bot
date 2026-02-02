@@ -5,17 +5,17 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Install pnpm
-RUN npm install -g pnpm
+# Install git (needed for cloning) and pnpm
+RUN apk add --no-cache git && npm install -g pnpm
 
-# Copy dependency manifests
-COPY package.json pnpm-lock.yaml ./
+# Clone holmityd bot repository
+RUN git clone https://github.com/holmityd/GitHub-Issues-Discord-Threads-Bot.git bot-source
+
+# Move into cloned directory
+WORKDIR /app/bot-source
 
 # Install dependencies
 RUN pnpm install --frozen-lockfile
-
-# Copy source code
-COPY . .
 
 # Build TypeScript
 RUN pnpm run build
@@ -25,17 +25,17 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Install pnpm in production image
-RUN npm install -g pnpm
+# Install pnpm and wget (for health check)
+RUN apk add --no-cache wget && npm install -g pnpm
 
-# Copy package files
-COPY package.json pnpm-lock.yaml ./
+# Copy package files from builder
+COPY --from=builder /app/bot-source/package.json /app/bot-source/pnpm-lock.yaml ./
 
 # Install production dependencies only
 RUN pnpm install --frozen-lockfile --prod
 
 # Copy built artifacts from builder
-COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/bot-source/dist ./dist
 
 # Expose webhook port
 EXPOSE 5000

@@ -9,7 +9,6 @@ echo ""
 
 # Configuration
 BOT_DIR="/opt/osrs-companion/discord-bot"
-REPO_URL="https://github.com/holmityd/GitHub-Issues-Discord-Threads-Bot.git"
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -22,21 +21,8 @@ if [[ $EUID -eq 0 ]]; then
    echo -e "${YELLOW}Warning: Running as root. Consider using a non-root user with Docker permissions.${NC}"
 fi
 
-# Phase 1: Clone bot repository
-echo -e "${GREEN}Phase 1: Cloning holmityd bot repository...${NC}"
-if [ -d "$BOT_DIR/src" ]; then
-    echo "Bot source already exists. Pulling latest changes..."
-    cd "$BOT_DIR"
-    git pull
-else
-    echo "Cloning bot repository..."
-    git clone "$REPO_URL" "$BOT_DIR/temp"
-    # Move contents to bot directory
-    mv "$BOT_DIR/temp/"* "$BOT_DIR/"
-    mv "$BOT_DIR/temp/".* "$BOT_DIR/" 2>/dev/null || true
-    rm -rf "$BOT_DIR/temp"
-fi
-
+# Phase 1: Navigate to bot directory
+echo -e "${GREEN}Phase 1: Navigating to bot directory...${NC}"
 cd "$BOT_DIR"
 
 # Phase 2: Verify environment configuration
@@ -68,6 +54,7 @@ echo "Environment configuration verified ✓"
 
 # Phase 3: Build Docker image
 echo -e "${GREEN}Phase 3: Building Docker image...${NC}"
+echo "Note: Dockerfile will clone holmityd bot repository during build"
 docker build -t osrs-discord-bot:latest .
 echo "Docker image built ✓"
 

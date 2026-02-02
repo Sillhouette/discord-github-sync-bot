@@ -14,8 +14,8 @@ RUN git clone https://github.com/holmityd/GitHub-Issues-Discord-Threads-Bot.git 
 # Move into cloned directory
 WORKDIR /app/bot-source
 
-# Install dependencies
-RUN pnpm install --frozen-lockfile
+# Install dependencies (allow lockfile updates for external repo)
+RUN pnpm install
 
 # Build TypeScript
 RUN pnpm run build
@@ -31,8 +31,8 @@ RUN apk add --no-cache wget && npm install -g pnpm
 # Copy package files from builder
 COPY --from=builder /app/bot-source/package.json /app/bot-source/pnpm-lock.yaml ./
 
-# Install production dependencies only
-RUN pnpm install --frozen-lockfile --prod
+# Install production dependencies only (allow lockfile updates for external repo)
+RUN pnpm install --prod
 
 # Copy built artifacts from builder
 COPY --from=builder /app/bot-source/dist ./dist

@@ -198,6 +198,7 @@ chmod +x deploy.sh
 ```
 
 The script will:
+
 1. Clone/update bot repository
 2. Verify `.env` configuration
 3. Build Docker image
@@ -209,16 +210,19 @@ The script will:
 ### Step 6: Verify Deployment
 
 **Check bot status:**
+
 ```bash
 docker ps | grep osrs-discord-bot
 ```
 
 **View logs:**
+
 ```bash
 docker logs osrs-discord-bot -f
 ```
 
 **Verify Discord bot is online:**
+
 - Check your Discord server members list
 - Bot should show as "Online" (green dot)
 
@@ -318,12 +322,14 @@ docker restart osrs-discord-bot
 ### Rotate Tokens (Every 90 Days)
 
 **GitHub PAT:**
+
 1. Generate new fine-grained PAT (same permissions)
 2. Update `.env` file: `GITHUB_ACCESS_TOKEN=<new_token>`
 3. Restart bot: `docker restart osrs-discord-bot`
 4. Revoke old token via GitHub Settings
 
 **Discord Bot Token:**
+
 1. Discord Developer Portal → Bot → Reset Token
 2. Update `.env` file: `DISCORD_TOKEN=<new_token>`
 3. Restart bot: `docker restart osrs-discord-bot`
@@ -335,12 +341,14 @@ docker restart osrs-discord-bot
 ### Bot Not Creating GitHub Issues
 
 **Check:**
+
 1. Bot logs: `docker logs osrs-discord-bot -f`
 2. GitHub PAT permissions (Issues: Read and write)
 3. Discord forum channel ID in `.env` is correct
 4. Bot has permissions in Discord (Send Messages, Manage Threads)
 
 **Solution:**
+
 - Verify `.env` configuration
 - Restart bot: `docker restart osrs-discord-bot`
 - Check logs for specific error messages
@@ -348,12 +356,14 @@ docker restart osrs-discord-bot
 ### GitHub Webhook Not Delivering
 
 **Check:**
+
 1. nginx config for `/github-webhook` location block
 2. nginx status: `sudo systemctl status nginx`
 3. GitHub webhook Recent Deliveries (response codes)
 4. Bot container is running and healthy
 
 **Solution:**
+
 - Test webhook endpoint: `curl -X POST https://api.theoatrix.app/github-webhook`
 - Reload nginx: `sudo systemctl reload nginx`
 - Check bot logs for webhook receive messages
@@ -361,11 +371,13 @@ docker restart osrs-discord-bot
 ### Bot Container Keeps Restarting
 
 **Check:**
+
 1. Container logs: `docker logs osrs-discord-bot --tail 100`
 2. Health check status: `docker inspect osrs-discord-bot | grep -A 10 Health`
 3. `.env` file has all required variables
 
 **Solution:**
+
 - Fix errors shown in logs
 - Verify Discord token and GitHub PAT are valid
 - Ensure port 5000 is not already in use
@@ -375,6 +387,7 @@ docker restart osrs-discord-bot
 **Error:** Bot doesn't work with text channels
 
 **Solution:**
+
 - This bot requires Discord **forum channels** (not text channels)
 - If your server doesn't support forums, check server boost level
 - Alternative: Use different bot that supports text channels (not recommended)
@@ -411,15 +424,20 @@ docker restart osrs-discord-bot
 ## Support
 
 **Documentation:**
+
 - Original bot: https://github.com/holmityd/GitHub-Issues-Discord-Threads-Bot
 - Discord.js: https://discord.js.org/
 - Octokit: https://octokit.github.io/rest.js/
 
 **Logs:**
+
 ```bash
 docker logs osrs-discord-bot -f
 ```
 
 **Configuration:**
+
 - Backlog item: `docs/backlog/tooling/P2-discord-github-issue-bot.md`
 - Discovery: `docs/analysis/20260201_discover_discord-github-integration.md`
+
+**Force Redeploy**

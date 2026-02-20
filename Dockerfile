@@ -1,20 +1,18 @@
 # Multi-stage build for Discord-to-GitHub Issue Bot
-# Based on holmityd/GitHub-Issues-Discord-Threads-Bot
+# Vendored from holmityd/GitHub-Issues-Discord-Threads-Bot with local patches
 
 FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Install git (needed for cloning) and pnpm
-RUN apk add --no-cache git && npm install -g pnpm
+# Install pnpm
+RUN npm install -g pnpm
 
-# Clone holmityd bot repository
-RUN git clone https://github.com/holmityd/GitHub-Issues-Discord-Threads-Bot.git bot-source
+# Copy vendored source
+COPY package.json pnpm-lock.yaml tsconfig.json webpack.config.js ./
+COPY src ./src
 
-# Move into cloned directory
-WORKDIR /app/bot-source
-
-# Install dependencies (allow lockfile updates for external repo)
+# Install dependencies
 RUN pnpm install
 
 # Build TypeScript
@@ -29,13 +27,13 @@ WORKDIR /app
 RUN apk add --no-cache wget && npm install -g pnpm
 
 # Copy package files from builder
-COPY --from=builder /app/bot-source/package.json /app/bot-source/pnpm-lock.yaml ./
+COPY --from=builder /app/package.json /app/pnpm-lock.yaml ./
 
-# Install production dependencies only (allow lockfile updates for external repo)
+# Install production dependencies only
 RUN pnpm install --prod
 
 # Copy built artifacts from builder
-COPY --from=builder /app/bot-source/dist ./dist
+COPY --from=builder /app/dist ./dist
 
 # Expose webhook port
 EXPOSE 5000

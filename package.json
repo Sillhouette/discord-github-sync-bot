@@ -7,6 +7,8 @@
     "dev": "tsx watch src/index.ts",
     "start": "node .",
     "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "format": "prettier --write \"**/*.{json,ts}\"",
     "lint": "eslint . --ext ts --fix",
     "forward": "ssh -R 80:localhost:5000 serveo.net"
@@ -26,6 +28,7 @@
     "@types/node": "^20.14.2",
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "@typescript-eslint/parser": "^6.21.0",
+    "@vitest/ui": "^1.0.4",
     "bufferutil": "^4.0.8",
     "eslint": "^8.57.0",
     "eslint-config-prettier": "^9.1.0",
@@ -36,6 +39,7 @@
     "tsup": "^8.5.1",
     "tsx": "^4.15.4",
     "typescript": "^5.4.5",
-    "utf-8-validate": "^6.0.4"
+    "utf-8-validate": "^6.0.4",
+    "vitest": "^1.0.4"
   }
 }

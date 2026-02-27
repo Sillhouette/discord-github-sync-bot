@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "node .",
-    "build": "webpack",
+    "build": "tsup",
     "format": "prettier --write \"**/*.{json,ts}\"",
     "lint": "eslint . --ext ts --fix",
     "forward": "ssh -R 80:localhost:5000 serveo.net"
@@ -33,11 +33,9 @@
     "eslint-plugin-n": "^16.6.2",
     "eslint-plugin-promise": "^6.2.0",
     "prettier": "^3.3.2",
-    "ts-loader": "^9.5.1",
+    "tsup": "^8.5.1",
     "tsx": "^4.15.4",
     "typescript": "^5.4.5",
-    "utf-8-validate": "^6.0.4",
-    "webpack": "^5.92.0",
-    "webpack-cli": "^5.1.4"
+    "utf-8-validate": "^6.0.4"
   }
 }

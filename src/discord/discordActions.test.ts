@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
-import { extractImageUrls, stripImageMarkdown } from "./discordActions";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { extractImageUrls, stripImageMarkdown, createComment, updateComment } from "./discordActions";
 
 vi.mock("../config", () => ({
   config: {
@@ -11,16 +11,29 @@ vi.mock("../config", () => ({
   },
 }));
 
-vi.mock("./discord", () => ({ default: { channels: { cache: new Map() } } }));
+// user.id is the bot's application ID — used by the webhook selector in updateComment.
+vi.mock("./discord", () => ({
+  default: { channels: { cache: new Map() }, user: { id: "bot-app-id" } },
+}));
 
 vi.mock("../logger", () => ({
   logger: { info: vi.fn(), error: vi.fn() },
-  Actions: {},
-  Triggerer: {},
+  Actions: { Commented: "commented", EditedComment: "editedComment" },
+  Triggerer: { Github: "github" },
   getDiscordUrl: vi.fn(),
 }));
 
 vi.mock("../store", () => ({ store: { threads: [] } }));
+
+vi.mock("../commentMap", () => ({ saveCommentMapping: vi.fn() }));
+
+// Mock only MessagePayload from discord.js — the other imports are TypeScript
+// types only and don't require a runtime value.
+vi.mock("discord.js", () => ({
+  MessagePayload: {
+    create: vi.fn(() => ({ resolveBody: vi.fn(() => ({})) })),
+  },
+}));
 
 describe("extractImageUrls", () => {
   it("should extract a single image URL from markdown", () => {
@@ -95,6 +108,35 @@ describe("extractImageUrls", () => {
     // Assert
     expect(result).toEqual([]);
   });
+
+  it("should extract URL from an HTML img tag (GitHub upload format)", () => {
+    // Arrange — GitHub renders uploaded images as <img> tags, not markdown
+    const body =
+      '<img width="1179" height="2556" alt="Image" src="https://github.com/user-attachments/assets/e65d8dfa-3afc-483f-9572-566157819caa" />';
+
+    // Act
+    const result = extractImageUrls(body);
+
+    // Assert
+    expect(result).toEqual([
+      "https://github.com/user-attachments/assets/e65d8dfa-3afc-483f-9572-566157819caa",
+    ]);
+  });
+
+  it("should extract URLs from mixed markdown and HTML img tags", () => {
+    // Arrange
+    const body =
+      '![md](https://example.com/a.png)\n<img src="https://github.com/user-attachments/assets/abc123" />';
+
+    // Act
+    const result = extractImageUrls(body);
+
+    // Assert
+    expect(result).toEqual([
+      "https://example.com/a.png",
+      "https://github.com/user-attachments/assets/abc123",
+    ]);
+  });
 });
 
 describe("stripImageMarkdown", () => {
@@ -152,5 +194,250 @@ describe("stripImageMarkdown", () => {
 
     // Assert
     expect(result).toBe("Before  After");
+  });
+
+  it("should strip HTML img tags (GitHub upload format)", () => {
+    // Arrange
+    const body =
+      'Some text\n<img width="1179" height="2556" alt="Image" src="https://github.com/user-attachments/assets/abc" />\nMore text';
+
+    // Act
+    const result = stripImageMarkdown(body);
+
+    // Assert
+    expect(result).toBe("Some text\n\nMore text");
+  });
+
+  it("should strip non-self-closing HTML img tags", () => {
+    // Arrange — HTML5 allows <img> without the trailing slash
+    const body = 'Text <img src="https://example.com/img.png"> More';
+
+    // Act
+    const result = stripImageMarkdown(body);
+
+    // Assert
+    expect(result).toBe("Text  More");
+  });
+});
+
+describe("createComment", () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const { store } = await import("../store");
+    store.threads = [];
+    const discordModule = await import("./discord");
+    (discordModule.default.channels.cache as Map<string, unknown>).clear();
+  });
+
+  it("should call saveCommentMapping after posting a webhook message", async () => {
+    // Arrange
+    const mockSend = vi.fn().mockResolvedValue({ id: "discord-msg-777" });
+    const mockCreateWebhook = vi.fn().mockResolvedValue({ send: mockSend });
+    const mockChannel = {
+      parentId: "forum-create-1",
+      parent: { createWebhook: mockCreateWebhook },
+    };
+
+    const { store } = await import("../store");
+    const discordModule = await import("./discord");
+    const { saveCommentMapping } = await import("../commentMap");
+
+    store.threads = [
+      {
+        id: "thread-create-1",
+        title: "Test",
+        appliedTags: [],
+        node_id: "gh-node-create-1",
+        comments: [],
+        archived: false,
+        locked: false,
+      },
+    ];
+    (discordModule.default.channels.cache as Map<string, unknown>).set(
+      "thread-create-1",
+      mockChannel,
+    );
+
+    // Act
+    await createComment({
+      git_id: 42,
+      body: "Hello from GitHub",
+      login: "octocat",
+      avatar_url: "https://github.com/octocat.png",
+      node_id: "gh-node-create-1",
+    });
+
+    // Assert
+    expect(mockSend).toHaveBeenCalled();
+    expect(saveCommentMapping).toHaveBeenCalledWith(42, "discord-msg-777", "gh-node-create-1");
+  });
+});
+
+describe("updateComment", () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const { store } = await import("../store");
+    store.threads = [];
+    const discordModule = await import("./discord");
+    (discordModule.default.channels.cache as Map<string, unknown>).clear();
+  });
+
+  it("should fetch webhooks by applicationId when cache is cold and edit the message", async () => {
+    // Arrange — webhookCache starts cold for this parentId (unique per test)
+    const mockEditMessage = vi.fn().mockResolvedValue({});
+    // The webhook's applicationId must match client.user.id ("bot-app-id" from the mock)
+    const mockWebhook = { applicationId: "bot-app-id", editMessage: mockEditMessage };
+    const mockHooks = {
+      find: vi.fn((predicate: (h: typeof mockWebhook) => boolean) =>
+        predicate(mockWebhook) ? mockWebhook : undefined,
+      ),
+      first: vi.fn(() => mockWebhook),
+    };
+    const mockFetchWebhooks = vi.fn().mockResolvedValue(mockHooks);
+    const mockChannel = {
+      parentId: "forum-update-cold-1",
+      parent: { fetchWebhooks: mockFetchWebhooks },
+    };
+
+    const { store } = await import("../store");
+    const discordModule = await import("./discord");
+
+    store.threads = [
+      {
+        id: "thread-update-1",
+        title: "Test",
+        appliedTags: [],
+        node_id: "gh-node-update-1",
+        comments: [{ id: "discord-msg-edit-1", git_id: 55 }],
+        archived: false,
+        locked: false,
+      },
+    ];
+    (discordModule.default.channels.cache as Map<string, unknown>).set(
+      "thread-update-1",
+      mockChannel,
+    );
+
+    // Act
+    await updateComment({
+      discord_id: "discord-msg-edit-1",
+      body: "Edited text",
+      node_id: "gh-node-update-1",
+    });
+
+    // Assert — fetched by applicationId, edited the right message
+    expect(mockFetchWebhooks).toHaveBeenCalled();
+    expect(mockHooks.find).toHaveBeenCalled();
+    expect(mockEditMessage).toHaveBeenCalledWith(
+      "discord-msg-edit-1",
+      expect.objectContaining({ content: "Edited text" }),
+    );
+  });
+
+  it("should edit the message using the cached webhook without fetching again", async () => {
+    // Arrange — warm the cache for a unique parentId by going through createComment first
+    const mockEditMessage = vi.fn().mockResolvedValue({});
+    const mockSend = vi.fn().mockResolvedValue({ id: "discord-msg-warm-1" });
+    // Single webhook object serves both send (from createComment) and editMessage (from updateComment)
+    const mockWebhook = { send: mockSend, editMessage: mockEditMessage, edit: vi.fn() };
+    const mockCreateWebhook = vi.fn().mockResolvedValue(mockWebhook);
+    const mockChannel = {
+      parentId: "forum-warm-1",
+      parent: { createWebhook: mockCreateWebhook },
+      // fetchWebhooks is placed on the channel object (not channel.parent) intentionally —
+      // it acts as a sentinel to confirm the warm-cache path never reaches the fallback
+      // fetch logic, which calls channel.parent.fetchWebhooks(). Placing it here means
+      // any accidental call would be caught by the not.toHaveBeenCalled() assertion below
+      // without accidentally wiring it into the real code path under test.
+      fetchWebhooks: vi.fn(),
+    };
+
+    const { store } = await import("../store");
+    const discordModule = await import("./discord");
+
+    store.threads = [
+      {
+        id: "thread-warm-1",
+        title: "Test",
+        appliedTags: [],
+        node_id: "gh-node-warm-1",
+        comments: [],
+        archived: false,
+        locked: false,
+      },
+    ];
+    (discordModule.default.channels.cache as Map<string, unknown>).set(
+      "thread-warm-1",
+      mockChannel,
+    );
+
+    // Warm the cache: createComment creates + caches the webhook for "forum-warm-1"
+    await createComment({
+      git_id: 77,
+      body: "Initial comment",
+      login: "octocat",
+      avatar_url: "https://github.com/octocat.png",
+      node_id: "gh-node-warm-1",
+    });
+
+    // Act — updateComment should reuse the cached webhook, not call fetchWebhooks
+    await updateComment({
+      discord_id: "discord-msg-warm-1",
+      body: "Edited warm",
+      node_id: "gh-node-warm-1",
+    });
+
+    // Assert — no fetch needed; editMessage called directly
+    expect(mockChannel.fetchWebhooks).not.toHaveBeenCalled();
+    expect(mockEditMessage).toHaveBeenCalledWith(
+      "discord-msg-warm-1",
+      expect.objectContaining({ content: "Edited warm" }),
+    );
+  });
+
+  it("should log an error and not edit when fetchWebhooks returns empty collection", async () => {
+    // Arrange — cache is cold; fetchWebhooks returns a collection with no webhooks
+    const mockHooks = {
+      find: vi.fn(() => undefined),
+      first: vi.fn(() => undefined),
+    };
+    const mockFetchWebhooks = vi.fn().mockResolvedValue(mockHooks);
+    const mockChannel = {
+      parentId: "forum-empty-hooks-1",
+      parent: { fetchWebhooks: mockFetchWebhooks },
+    };
+
+    const { store } = await import("../store");
+    const discordModule = await import("./discord");
+    const { logger } = await import("../logger");
+
+    store.threads = [
+      {
+        id: "thread-empty-hooks-1",
+        title: "Test",
+        appliedTags: [],
+        node_id: "gh-node-empty-hooks-1",
+        comments: [{ id: "discord-msg-no-hook", git_id: 88 }],
+        archived: false,
+        locked: false,
+      },
+    ];
+    (discordModule.default.channels.cache as Map<string, unknown>).set(
+      "thread-empty-hooks-1",
+      mockChannel,
+    );
+
+    // Act
+    await updateComment({
+      discord_id: "discord-msg-no-hook",
+      body: "Should not be sent",
+      node_id: "gh-node-empty-hooks-1",
+    });
+
+    // Assert — error logged, no edit attempted
+    expect(mockFetchWebhooks).toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.stringContaining("no webhook found"),
+    );
   });
 });

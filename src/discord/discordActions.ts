@@ -8,6 +8,7 @@ import {
   getDiscordUrl,
   logger,
 } from "../logger";
+import { saveCommentMapping } from "../commentMap";
 import { store } from "../store";
 import client from "./discord";
 
@@ -68,17 +69,26 @@ export function createThread({
 }
 
 export function extractImageUrls(body: string): string[] {
-  const imageRegex = /!\[.*?\]\((https?:\/\/[^\s)]+)/g;
   const urls: string[] = [];
+  // Markdown: ![alt](url) or ![alt](url "title")
+  const mdRegex = /!\[.*?\]\((https?:\/\/[^\s)]+)/g;
   let match;
-  while ((match = imageRegex.exec(body)) !== null) {
+  while ((match = mdRegex.exec(body)) !== null) {
+    urls.push(match[1]);
+  }
+  // HTML: <img src="url" .../>  (GitHub renders uploaded images this way)
+  const htmlRegex = /<img\s[^>]*src="(https?:\/\/[^"]+)"/gi;
+  while ((match = htmlRegex.exec(body)) !== null) {
     urls.push(match[1]);
   }
   return urls;
 }
 
 export function stripImageMarkdown(body: string): string {
-  return body.replace(/!\[.*?\]\(https?:\/\/[^\s)]+(?:\s[^)]+)?\)/g, "").trim();
+  return body
+    .replace(/!\[.*?\]\(https?:\/\/[^\s)]+(?:\s[^)]+)?\)/g, "")
+    .replace(/<img\s[^>]*\/?>/gi, "")
+    .trim();
 }
 
 export async function createComment({
@@ -121,6 +131,7 @@ export async function createComment({
 
     const { id } = await webhook.send(messagePayload);
     thread.comments.push({ id, git_id });
+    saveCommentMapping(git_id, id, thread.node_id!);
     info(Actions.Commented, thread);
 
     // Discord auto-unarchives threads when a message is posted.
@@ -147,10 +158,28 @@ export async function updateComment({
   const { thread, channel } = await getThreadChannel(node_id);
   if (!thread || !channel || !channel.parentId) return;
 
-  const webhook = webhookCache.get(channel.parentId);
+  let webhook = webhookCache.get(channel.parentId);
   if (!webhook) {
-    logger.error(`updateComment: no cached webhook for channel ${channel.parentId}`);
-    return;
+    // Cache is cold (e.g. after a bot restart) — fetch the existing webhook
+    // from Discord rather than failing. Prefer the webhook whose applicationId
+    // matches the bot's own user ID (the one we created). Fall back to the
+    // first result if client.user is not yet populated (shouldn't happen after
+    // the ready event, but guards against edge cases).
+    try {
+      const hooks = await (channel.parent as ForumChannel).fetchWebhooks();
+      const found =
+        (client.user?.id ? hooks.find((h) => h.applicationId === client.user!.id) : undefined) ??
+        hooks.first();
+      if (!found) {
+        logger.error(`updateComment: no webhook found for channel ${channel.parentId}`);
+        return;
+      }
+      webhook = found;
+      webhookCache.set(channel.parentId, webhook);
+    } catch (err) {
+      logger.error(`updateComment: failed to fetch webhooks: ${err}`);
+      return;
+    }
   }
 
   try {

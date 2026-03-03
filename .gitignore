@@ -1,6 +1,10 @@
 # Environment variables (contains secrets)
 .env
 
+# Persisted comment mappings (runtime state, not source)
+commentMap.json
+commentMap.json.tmp
+
 # Node modules
 node_modules/
 dist/

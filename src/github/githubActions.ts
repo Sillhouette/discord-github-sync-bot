@@ -3,6 +3,7 @@ import { Octokit } from "@octokit/rest";
 import { Attachment, Collection, Message } from "discord.js";
 import { config } from "../config";
 import { uploadToR2 } from "../r2";
+import { loadInto } from "../commentMap";
 import { GitIssue, Thread } from "../interfaces";
 import {
   ActionValue,
@@ -20,7 +21,7 @@ export const octokit = new Octokit({
 
 const graphqlWithAuth = graphql.defaults({
   headers: {
-    authorization: `token  ${process.env.GITHUB_ACCESS_TOKEN}`,
+    authorization: `token ${process.env.GITHUB_ACCESS_TOKEN}`,
   },
 });
 
@@ -315,7 +316,10 @@ export async function deleteIssue(thread: Thread) {
 
   try {
     await graphqlWithAuth(
-      `mutation {deleteIssue(input: {issueId: "${node_id}"}) {clientMutationId}}`,
+      `mutation DeleteIssue($issueId: ID!) {
+        deleteIssue(input: { issueId: $issueId }) { clientMutationId }
+      }`,
+      { issueId: node_id },
     );
     info(Actions.Deleted, thread);
   } catch (err) {
@@ -357,7 +361,9 @@ export async function getIssues() {
 
     await fillCommentsData(); // Wait for comments data to be filled
 
-    return formatIssuesToThreads(response.data as GitIssue[]);
+    const threads = formatIssuesToThreads(response.data as GitIssue[]);
+    loadInto(threads); // Restore GitHub→Discord webhook message mappings from disk
+    return threads;
   } catch (err) {
     if (err instanceof Error) {
       error(`Failed to get issues: ${err.message}`);

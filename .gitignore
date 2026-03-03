@@ -1,9 +1,8 @@
 # Environment variables (contains secrets)
 .env
 
-# Persisted comment mappings (runtime state, not source)
-commentMap.json
-commentMap.json.tmp
+# Persisted runtime state (comment mappings) — written to data/ when running locally
+data/
 
 # Node modules
 node_modules/

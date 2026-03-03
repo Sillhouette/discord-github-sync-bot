@@ -1,8 +1,12 @@
-import { existsSync, readFileSync, renameSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "fs";
 import path from "path";
 import { Thread } from "./interfaces";
 
-const MAP_FILE = path.resolve(process.cwd(), "commentMap.json");
+const MAP_FILE = path.resolve(process.cwd(), "data", "commentMap.json");
+
+// Ensure the data directory exists — no-op inside Docker (Dockerfile creates it),
+// but required for local development where the directory doesn't exist yet.
+mkdirSync(path.dirname(MAP_FILE), { recursive: true });
 
 type CommentEntry = { discord_id: string; node_id: string };
 type CommentMap = Record<string, CommentEntry>; // key is git_id as string

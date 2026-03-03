@@ -1,10 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import path from "path";
 import type { Thread } from "./interfaces";
 
 // vi.mock() is hoisted automatically — declare it at the top level,
 // then capture the fn references via vi.mocked() after import.
 vi.mock("fs", () => ({
   existsSync: vi.fn(),
+  mkdirSync: vi.fn(),
   readFileSync: vi.fn(),
   writeFileSync: vi.fn(),
   renameSync: vi.fn(),
@@ -32,15 +34,15 @@ describe("commentMap", () => {
       // Act
       saveCommentMapping(42, "discord-msg-1", "node-abc");
 
-      // Assert — writes to .tmp then renames to target
+      // Assert — writes to data/commentMap.json.tmp then renames to data/commentMap.json
       expect(mockWriteFileSync).toHaveBeenCalledWith(
-        expect.stringContaining("commentMap.json.tmp"),
+        expect.stringContaining(path.join("data", "commentMap.json.tmp")),
         expect.stringContaining('"42"'),
         "utf8",
       );
       expect(mockRenameSync).toHaveBeenCalledWith(
-        expect.stringContaining("commentMap.json.tmp"),
-        expect.stringContaining("commentMap.json"),
+        expect.stringContaining(path.join("data", "commentMap.json.tmp")),
+        expect.stringContaining(path.join("data", "commentMap.json")),
       );
     });
 

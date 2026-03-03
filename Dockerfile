@@ -35,6 +35,9 @@ RUN pnpm install --prod
 # Copy built artifacts from builder
 COPY --from=builder /app/dist ./dist
 
+# Create data directory for persistent runtime state (commentMap.json)
+RUN mkdir -p /app/data
+
 # Expose webhook port
 EXPOSE 5000
 

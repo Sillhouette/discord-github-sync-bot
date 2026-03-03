@@ -7,6 +7,7 @@ import {
   lockThread,
   unarchiveThread,
   unlockThread,
+  updateComment,
 } from "../discord/discordActions";
 import { GitHubLabel } from "../interfaces";
 import { store } from "../store";
@@ -48,6 +49,32 @@ export async function handleCreated(req: Request) {
     body,
     login,
     avatar_url,
+    node_id,
+  });
+}
+
+export async function handleEdited(req: Request) {
+  // issues.edited fires for issue title/body edits (no comment field) as well as
+  // issue_comment.edited events — guard to avoid a crash on the former.
+  if (!req.body.comment) return;
+
+  const { id, body } = req.body.comment;
+  const { node_id } = req.body.issue;
+
+  // Skip comments that originated from the Discord bot
+  if (getDiscordInfoFromGithubBody(body).channelId) {
+    return;
+  }
+
+  const thread = store.threads.find((t) => t.node_id === node_id);
+  if (!thread) return;
+
+  const comment = thread.comments.find((c) => c.git_id === id);
+  if (!comment) return;
+
+  updateComment({
+    discord_id: comment.id,
+    body,
     node_id,
   });
 }

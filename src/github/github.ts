@@ -4,6 +4,7 @@ import {
   handleClosed,
   handleCreated,
   handleDeleted,
+  handleEdited,
   handleLocked,
   handleOpened,
   handleReopened,
@@ -23,6 +24,7 @@ export function initGithub() {
   } = {
     opened: (req) => handleOpened(req),
     created: (req) => handleCreated(req),
+    edited: (req) => handleEdited(req),
     closed: (req) => handleClosed(req),
     reopened: (req) => handleReopened(req),
     locked: (req) => handleLocked(req),

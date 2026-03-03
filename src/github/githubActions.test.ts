@@ -10,6 +10,7 @@ import {
   createIssueComment,
   deleteIssue,
   deleteComment,
+  octokit,
 } from './githubActions';
 import { Thread, ThreadComment } from '../interfaces';
 import { store } from '../store';
@@ -24,6 +25,7 @@ vi.mock('../logger', () => ({
     Created: 'created',
     Closed: 'closed',
     Commented: 'commented',
+    EditedComment: 'edited comment',
     Reopened: 'reopened',
     Locked: 'locked',
     Unlocked: 'unlocked',
@@ -47,6 +49,9 @@ vi.mock('../config', () => ({
     DISCORD_CHANNEL_ID: 'test-channel-id',
   },
 }));
+
+// Mock R2 so attachment tests don't hit real S3
+vi.mock('../r2', () => ({ uploadToR2: vi.fn().mockResolvedValue(null) }));
 
 // Mock octokit
 vi.mock('./githubActions', async () => {
@@ -138,7 +143,7 @@ describe('GitHub Actions', () => {
   });
 
   describe('closeIssue', () => {
-    it('should handle thread without issue number', async () => {
+    it('should not call the API when thread has no issue number', async () => {
       // Arrange
       const thread: Thread = {
         id: 'thread-1',
@@ -152,32 +157,13 @@ describe('GitHub Actions', () => {
       // Act
       await closeIssue(thread);
 
-      // Assert - should return early without calling API
-      expect(store.threads).toHaveLength(0);
-    });
-
-    it('should log error when thread lacks issue number', async () => {
-      // Arrange
-      const thread: Thread = {
-        id: 'thread-1',
-        title: 'Test Issue',
-        appliedTags: [],
-        comments: [],
-        archived: false,
-        locked: false,
-      };
-
-      // Act
-      await closeIssue(thread);
-
-      // Assert - verify error was logged (in real scenario)
-      // The test verifies function handles missing issue_number gracefully
-      expect(thread.number).toBeUndefined();
+      // Assert
+      expect(octokit.rest.issues.update).not.toHaveBeenCalled();
     });
   });
 
   describe('openIssue', () => {
-    it('should handle thread without issue number', async () => {
+    it('should not call the API when thread has no issue number', async () => {
       // Arrange
       const thread: Thread = {
         id: 'thread-1',
@@ -192,12 +178,12 @@ describe('GitHub Actions', () => {
       await openIssue(thread);
 
       // Assert
-      expect(thread.number).toBeUndefined();
+      expect(octokit.rest.issues.update).not.toHaveBeenCalled();
     });
   });
 
   describe('lockIssue', () => {
-    it('should handle thread without issue number', async () => {
+    it('should not call the API when thread has no issue number', async () => {
       // Arrange
       const thread: Thread = {
         id: 'thread-1',
@@ -212,12 +198,12 @@ describe('GitHub Actions', () => {
       await lockIssue(thread);
 
       // Assert
-      expect(thread.number).toBeUndefined();
+      expect(octokit.rest.issues.lock).not.toHaveBeenCalled();
     });
   });
 
   describe('unlockIssue', () => {
-    it('should handle thread without issue number', async () => {
+    it('should not call the API when thread has no issue number', async () => {
       // Arrange
       const thread: Thread = {
         id: 'thread-1',
@@ -232,7 +218,7 @@ describe('GitHub Actions', () => {
       await unlockIssue(thread);
 
       // Assert
-      expect(thread.number).toBeUndefined();
+      expect(octokit.rest.issues.unlock).not.toHaveBeenCalled();
     });
   });
 
@@ -265,8 +251,8 @@ describe('GitHub Actions', () => {
       // Act
       await createIssue(thread, mockMessage);
 
-      // Assert - should return early without creating issue
-      expect(thread.number).toBe(42);
+      // Assert - should return early without calling API
+      expect(octokit.rest.issues.create).not.toHaveBeenCalled();
     });
   });
 
@@ -298,8 +284,8 @@ describe('GitHub Actions', () => {
       // Act
       await createIssueComment(thread, mockMessage);
 
-      // Assert
-      expect(thread.comments).toHaveLength(0);
+      // Assert - should return early without calling API
+      expect(octokit.rest.issues.createComment).not.toHaveBeenCalled();
     });
   });
 
@@ -318,8 +304,8 @@ describe('GitHub Actions', () => {
       // Act
       await deleteIssue(thread);
 
-      // Assert
-      expect(thread.node_id).toBeUndefined();
+      // Assert - should return early without calling API
+      // (deleteIssue uses graphqlWithAuth, not octokit — verified by no throw)
     });
   });
 
@@ -337,11 +323,12 @@ describe('GitHub Actions', () => {
       };
       const commentId = 999;
 
-      // Act
-      await deleteComment(thread, commentId);
-
-      // Assert - should not throw or error
-      expect(thread.comments).toHaveLength(0);
+      // Act & Assert — deleteComment has no guard path; verify it does not
+      // rethrow API errors (the try/catch inside swallows them).
+      // Note: the internal octokit instance is not the exported mock, so we
+      // cannot assert toHaveBeenCalled() here without a deeper mock refactor.
+      await expect(deleteComment(thread, commentId)).resolves.toBeUndefined();
     });
   });
 });
+

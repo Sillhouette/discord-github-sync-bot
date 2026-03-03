@@ -2,6 +2,7 @@ import { graphql } from "@octokit/graphql";
 import { Octokit } from "@octokit/rest";
 import { Attachment, Collection, Message } from "discord.js";
 import { config } from "../config";
+import { uploadToR2 } from "../r2";
 import { GitIssue, Thread } from "../interfaces";
 import {
   ActionValue,
@@ -36,27 +37,83 @@ const error = (action: ActionValue | string, thread?: Thread) =>
       (thread ? `| ${getGithubUrl(thread)}` : ""),
   );
 
-function attachmentsToMarkdown(attachments: Collection<string, Attachment>) {
+const TEXT_INLINE_MAX_BYTES = 4096;
+
+export async function attachmentsToMarkdown(
+  attachments: Collection<string, Attachment>,
+  messageId: string,
+): Promise<string> {
   let md = "";
-  attachments.forEach(({ url, name, contentType }) => {
+  for (const { url, name, contentType, size } of attachments.values()) {
     switch (contentType) {
       case "image/png":
       case "image/jpeg":
-        md += `![${name}](${url} "${name}")`;
+      case "image/gif":
+      case "image/webp": {
+        let imageUrl = url;
+        try {
+          const res = await fetch(url);
+          if (res.ok) {
+            const buffer = Buffer.from(await res.arrayBuffer());
+            const key = `bot-uploads/discord/${messageId}/${name}`;
+            const hosted = await uploadToR2(key, buffer, contentType);
+            if (hosted) imageUrl = hosted;
+          }
+        } catch (err) {
+          logger.error(`Failed to rehost image ${name}: ${err}`);
+        }
+        md += `![${name}](${imageUrl} "${name}")`;
         break;
+      }
+      default: {
+        if (contentType?.startsWith("text/") && size <= TEXT_INLINE_MAX_BYTES) {
+          try {
+            const res = await fetch(url);
+            if (res.ok) {
+              const text = await res.text();
+              md += `\n**Attached: ${name}**\n\`\`\`\n${text}\n\`\`\`\n`;
+            } else {
+              md += `[${name}](${url})`;
+            }
+          } catch {
+            md += `[${name}](${url})`;
+          }
+        } else {
+          // Upload all other files (large text, PDFs, ZIPs, etc.) to R2
+          // so the link doesn't expire with the Discord CDN URL.
+          let fileUrl = url;
+          try {
+            const res = await fetch(url);
+            if (res.ok) {
+              const buffer = Buffer.from(await res.arrayBuffer());
+              const key = `bot-uploads/discord/${messageId}/${name}`;
+              const hosted = await uploadToR2(
+                key,
+                buffer,
+                contentType ?? "application/octet-stream",
+              );
+              if (hosted) fileUrl = hosted;
+            }
+          } catch (err) {
+            logger.error(`Failed to rehost file ${name}: ${err}`);
+          }
+          md += `[${name}](${fileUrl})`;
+        }
+        break;
+      }
     }
-  });
+  }
   return md;
 }
 
-function getIssueBody(params: Message) {
+async function getIssueBody(params: Message): Promise<string> {
   const { guildId, channelId, id, content, author, attachments } = params;
   const { globalName, avatar } = author;
 
   return (
     `<kbd>[![${globalName}](https://cdn.discordapp.com/avatars/${author.id}/${avatar}.webp?size=40)](https://discord.com/channels/${guildId}/${channelId}/${id})</kbd> [${globalName}](https://discord.com/channels/${guildId}/${channelId}/${id})  \`BOT\`\n\n` +
     `${content}\n` +
-    `${attachmentsToMarkdown(attachments)}\n`
+    `${await attachmentsToMarkdown(attachments, id)}\n`
   );
 }
 
@@ -192,7 +249,7 @@ export async function createIssue(thread: Thread, params: Message) {
       (id) => store.availableTags.find((item) => item.id === id)?.name || "",
     );
 
-    const body = getIssueBody(params);
+    const body = await getIssueBody(params);
     const response = await octokit.rest.issues.create({
       ...repoCredentials,
       labels,
@@ -218,7 +275,7 @@ export async function createIssue(thread: Thread, params: Message) {
 }
 
 export async function createIssueComment(thread: Thread, params: Message) {
-  const body = getIssueBody(params);
+  const body = await getIssueBody(params);
   const { number: issue_number } = thread;
 
   if (!issue_number) {

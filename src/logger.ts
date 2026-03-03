@@ -31,6 +31,7 @@ export const Actions = {
   Created: "created",
   Closed: "closed",
   Commented: "commented",
+  EditedComment: "edited comment",
   Reopened: "reopened",
   Locked: "locked",
   Unlocked: "unlocked",

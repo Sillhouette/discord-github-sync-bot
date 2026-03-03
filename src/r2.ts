@@ -1,0 +1,47 @@
+const CDN_BUCKET = "osrs-content";
+const CDN_BASE_URL = "https://cdn.theoatrix.app";
+const CF_API_BASE = "https://api.cloudflare.com/client/v4";
+
+function getCredentials(): { accountId: string; apiToken: string } | null {
+  const { CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN } = process.env;
+  if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_API_TOKEN) return null;
+  return { accountId: CLOUDFLARE_ACCOUNT_ID, apiToken: CLOUDFLARE_API_TOKEN };
+}
+
+/**
+ * Uploads a buffer to the R2 bucket under the given key and returns the
+ * public CDN URL. Returns null when Cloudflare credentials are not configured
+ * so callers can degrade gracefully.
+ */
+export async function uploadToR2(
+  key: string,
+  buffer: Buffer,
+  contentType: string,
+): Promise<string | null> {
+  const creds = getCredentials();
+  if (!creds) return null;
+
+  const { accountId, apiToken } = creds;
+  // Encode each path segment individually so slashes are preserved as path
+  // separators while special characters (spaces, etc.) in filenames are encoded.
+  // encodeURIComponent(key) would encode the slashes too, producing a single
+  // path segment that Cloudflare URL-decodes back to the correct key — this
+  // works in practice but is non-obvious. Per-segment encoding is explicit.
+  const encodedKey = key.split("/").map(encodeURIComponent).join("/");
+  const url = `${CF_API_BASE}/accounts/${accountId}/r2/buckets/${CDN_BUCKET}/objects/${encodedKey}`;
+
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${apiToken}`,
+      "Content-Type": contentType,
+    },
+    body: buffer,
+  });
+
+  if (!res.ok) {
+    throw new Error(`R2 upload failed: ${res.status} ${res.statusText}`);
+  }
+
+  return `${CDN_BASE_URL}/${encodedKey}`;
+}

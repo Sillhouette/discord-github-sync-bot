@@ -58,9 +58,31 @@ export async function handleClientReady(client: Client) {
 
   logger.info(`Issues loaded : ${store.threads.length}`);
 
-  client.channels.fetch(config.DISCORD_CHANNEL_ID).then((params) => {
-    store.availableTags = (params as ForumChannel).availableTags;
-  });
+  try {
+    const forum = (await client.channels.fetch(config.DISCORD_CHANNEL_ID)) as ForumChannel;
+    store.availableTags = forum.availableTags;
+
+    // Reconcile Discord thread states with GitHub on startup.
+    // Archive any Discord threads that are still open but whose GitHub issue is closed.
+    const activeThreads = await forum.threads.fetchActive();
+    let reconciled = 0;
+    for (const [threadId, channel] of activeThreads.threads) {
+      const storeThread = store.threads.find((t) => t.id === threadId);
+      if (storeThread?.archived && !channel.archived) {
+        // storeThread.archived is already true (guaranteed by the condition above);
+        // the assignment is intentionally omitted to avoid a misleading no-op.
+        // The ThreadUpdate handler checks this flag before calling openIssue, so
+        // the value must be set before setArchived fires — it already is.
+        await channel.setArchived(true);
+        reconciled++;
+      }
+    }
+    if (reconciled > 0) {
+      logger.info(`Reconciled ${reconciled} stale Discord thread(s) with closed GitHub issues`);
+    }
+  } catch (err) {
+    logger.error(`handleClientReady: reconciliation failed: ${err instanceof Error ? err.stack : err}`);
+  }
 }
 
 export async function handleThreadCreate(params: AnyThreadChannel) {

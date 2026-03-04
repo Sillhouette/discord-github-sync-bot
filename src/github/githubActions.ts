@@ -374,21 +374,18 @@ export async function getIssues() {
 
 async function fillCommentsData() {
   try {
-    const response = await octokit.rest.issues.listCommentsForRepo({
+    const data = await octokit.paginate(octokit.rest.issues.listCommentsForRepo, {
       ...repoCredentials,
+      per_page: 100,
     });
 
-    if (response && response.data) {
-      response.data.forEach((comment) => {
-        const { channelId, id } = getDiscordInfoFromGithubBody(comment.body!);
-        if (!channelId || !id) return;
+    data.forEach((comment) => {
+      const { channelId, id } = getDiscordInfoFromGithubBody(comment.body!);
+      if (!channelId || !id) return;
 
-        const thread = store.threads.find((i) => i.id === channelId);
-        thread?.comments.push({ id, git_id: comment.id });
-      });
-    } else {
-      error("Failed to load comments - No response data");
-    }
+      const thread = store.threads.find((i) => i.id === channelId);
+      thread?.comments.push({ id, git_id: comment.id });
+    });
   } catch (err) {
     if (err instanceof Error) {
       error(`Failed to load comments: ${err.message}`);

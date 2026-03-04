@@ -3,8 +3,8 @@ version: '3.8'
 services:
   discord-bot:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: discord-bot/Dockerfile
     container_name: osrs-discord-bot
     restart: unless-stopped
     env_file:

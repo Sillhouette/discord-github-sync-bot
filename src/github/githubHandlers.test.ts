@@ -1,7 +1,16 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { Request } from "express";
-import { handleEdited } from "./githubHandlers";
+import { handleCreated, handleEdited } from "./githubHandlers";
 import { store } from "../store";
+
+// Mock logger to prevent output during tests
+vi.mock("../logger", () => ({
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
 
 // Mock discord actions
 vi.mock("../discord/discordActions", () => ({
@@ -37,6 +46,62 @@ vi.mock("../config", () => ({
   },
 }));
 
+describe("handleCreated", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    store.threads = [];
+    store.availableTags = [];
+  });
+
+  it("should skip comments that contain a Discord URL (bot-originated)", async () => {
+    // Arrange
+    const { createComment } = await import("../discord/discordActions");
+    const req = {
+      body: {
+        comment: {
+          id: 200,
+          body: "<kbd>[![user](avatar)](https://discord.com/channels/111/222/333)</kbd>",
+          user: { login: "discord-bot", avatar_url: "https://example.com/avatar.png", type: "Bot" },
+        },
+        issue: { node_id: "issue-node-1" },
+      },
+    } as unknown as Request;
+
+    // Act
+    await handleCreated(req);
+
+    // Assert
+    expect(createComment).not.toHaveBeenCalled();
+  });
+
+  it("should call createComment with correct params for non-bot comments", async () => {
+    // Arrange
+    const { createComment } = await import("../discord/discordActions");
+    const req = {
+      body: {
+        comment: {
+          id: 201,
+          body: "A normal GitHub comment",
+          user: { login: "github-user", avatar_url: "https://example.com/avatar.png", type: "User" },
+        },
+        issue: { node_id: "issue-node-2" },
+      },
+    } as unknown as Request;
+
+    // Act
+    await handleCreated(req);
+
+    // Assert
+    expect(createComment).toHaveBeenCalledWith({
+      git_id: 201,
+      body: "A normal GitHub comment",
+      login: "github-user",
+      avatar_url: "https://example.com/avatar.png",
+      node_id: "issue-node-2",
+    });
+  });
+});
+
 describe("handleEdited", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -69,6 +134,7 @@ describe("handleEdited", () => {
         comment: {
           id: 123,
           body: "<kbd>[![user](avatar)](https://discord.com/channels/111/222/333)</kbd>",
+          user: { login: "discord-bot" },
         },
         issue: { node_id: "issue-node-1" },
       },
@@ -87,7 +153,7 @@ describe("handleEdited", () => {
     store.threads = [];
     const req = {
       body: {
-        comment: { id: 123, body: "Updated comment text" },
+        comment: { id: 123, body: "Updated comment text", user: { login: "github-user" } },
         issue: { node_id: "nonexistent-node" },
       },
     } as unknown as Request;
@@ -115,7 +181,7 @@ describe("handleEdited", () => {
     ];
     const req = {
       body: {
-        comment: { id: 123, body: "Updated comment text" },
+        comment: { id: 123, body: "Updated comment text", user: { login: "github-user" } },
         issue: { node_id: "issue-node-1" },
       },
     } as unknown as Request;
@@ -143,7 +209,7 @@ describe("handleEdited", () => {
     ];
     const req = {
       body: {
-        comment: { id: 123, body: "Updated comment text" },
+        comment: { id: 123, body: "Updated comment text", user: { login: "github-user" } },
         issue: { node_id: "issue-node-1" },
       },
     } as unknown as Request;

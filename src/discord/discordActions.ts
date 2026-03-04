@@ -30,7 +30,7 @@ const info = (action: ActionValue, thread: Thread) =>
 // webhook or a queue would eliminate this at higher throughput.
 const webhookCache = new Map<string, Webhook>();
 
-export function createThread({
+export async function createThread({
   body,
   login,
   title,
@@ -48,24 +48,28 @@ export function createThread({
   const forum = client.channels.cache.get(
     config.DISCORD_CHANNEL_ID,
   ) as ForumChannel;
-  forum.threads
-    .create({
+  try {
+    const { id } = await forum.threads.create({
       message: {
         content: body + "/" + login, // TODO
       },
       name: title,
       appliedTags,
-    })
-    .then(({ id }) => {
-      const thread = store.threads.find((thread) => thread.id === id);
-      if (!thread) return;
-
-      thread.body = body;
-      thread.node_id = node_id;
-      thread.number = number;
-
-      info(Actions.Created, thread);
     });
+    const thread = store.threads.find((thread) => thread.id === id);
+    if (!thread) {
+      logger.warn(`createThread: Discord thread ${id} created but not found in store — node_id may not be set`);
+      return;
+    }
+
+    thread.body = body;
+    thread.node_id = node_id;
+    thread.number = number;
+
+    info(Actions.Created, thread);
+  } catch (err) {
+    logger.error(`createThread failed: ${err instanceof Error ? err.stack : err}`);
+  }
 }
 
 export function extractImageUrls(body: string): string[] {
@@ -142,7 +146,7 @@ export async function createComment({
       channel.setArchived(true);
     }
   } catch (err) {
-    logger.error(`createComment failed: ${err}`);
+    logger.error(`createComment failed: ${err instanceof Error ? err.stack : err}`);
   }
 }
 
@@ -177,7 +181,7 @@ export async function updateComment({
       webhook = found;
       webhookCache.set(channel.parentId, webhook);
     } catch (err) {
-      logger.error(`updateComment: failed to fetch webhooks: ${err}`);
+      logger.error(`updateComment: failed to fetch webhooks: ${err instanceof Error ? err.stack : err}`);
       return;
     }
   }
@@ -193,7 +197,7 @@ export async function updateComment({
     });
     info(Actions.EditedComment, thread);
   } catch (err) {
-    logger.error(`updateComment failed: ${err}`);
+    logger.error(`updateComment failed: ${err instanceof Error ? err.stack : err}`);
   }
 }
 
@@ -280,7 +284,7 @@ export async function getThreadChannel(node_id: string | undefined): Promise<{
     const fetchChanel = await client.channels.fetch(thread.id);
     channel = <ThreadChannel | undefined>fetchChanel;
   } catch (err) {
-    /* empty */
+    logger.warn(`getThreadChannel: failed to fetch channel ${thread.id}: ${err instanceof Error ? err.stack : err}`);
   }
 
   return { thread, channel };

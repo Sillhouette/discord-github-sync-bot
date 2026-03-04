@@ -15,8 +15,12 @@ const app = express();
 app.use(express.json());
 
 export function initGithub() {
-  app.get("", (_, res) => {
+  app.get("/", (_, res) => {
     res.json({ msg: "github webhooks work" });
+  });
+
+  app.get("/health", (_, res) => {
+    res.json({ status: "ok" });
   });
 
   const githubActions: {

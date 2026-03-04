@@ -149,8 +149,9 @@ export async function createComment({
         // Cold cache — prefer reusing an existing bot webhook over creating a new one
         // to avoid accumulating orphaned webhooks on bot restart (Discord limit: 10/channel).
         const hooks = await (channel.parent as ForumChannel).fetchWebhooks();
+        const botId = client.user?.id;
         const found =
-          (client.user?.id ? hooks.find((h) => h.applicationId === client.user!.id) : undefined) ??
+          (botId ? hooks.find((h) => h.applicationId === botId) : undefined) ??
           hooks.first();
         if (found) {
           webhook = found;
@@ -211,8 +212,9 @@ export async function updateComment({
     // the ready event, but guards against edge cases).
     try {
       const hooks = await (channel.parent as ForumChannel).fetchWebhooks();
+      const botId = client.user?.id;
       const found =
-        (client.user?.id ? hooks.find((h) => h.applicationId === client.user!.id) : undefined) ??
+        (botId ? hooks.find((h) => h.applicationId === botId) : undefined) ??
         hooks.first();
       if (!found) {
         logger.error(`updateComment: no webhook found for channel ${channel.parentId}`);

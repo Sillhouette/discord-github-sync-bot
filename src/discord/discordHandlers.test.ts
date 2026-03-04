@@ -121,6 +121,51 @@ describe('Discord Handlers', () => {
       expect(mockSetArchived).toHaveBeenCalledTimes(1);
     });
 
+    it('continues reconciling remaining threads when one setArchived call fails', async () => {
+      // Arrange — three closed threads; the first setArchived throws
+      const { getIssues } = await import('../github/githubActions');
+      vi.mocked(getIssues).mockResolvedValue([
+        { id: 'thread-a', title: 'A', appliedTags: [], comments: [], archived: true, locked: false },
+        { id: 'thread-b', title: 'B', appliedTags: [], comments: [], archived: true, locked: false },
+        { id: 'thread-c', title: 'C', appliedTags: [], comments: [], archived: true, locked: false },
+      ]);
+
+      const mockSetArchivedA = vi.fn().mockRejectedValue(new Error('rate limited'));
+      const mockSetArchivedB = vi.fn().mockResolvedValue(undefined);
+      const mockSetArchivedC = vi.fn().mockResolvedValue(undefined);
+      const mockActiveThreads = {
+        threads: new Map([
+          ['thread-a', { id: 'thread-a', archived: false, setArchived: mockSetArchivedA }],
+          ['thread-b', { id: 'thread-b', archived: false, setArchived: mockSetArchivedB }],
+          ['thread-c', { id: 'thread-c', archived: false, setArchived: mockSetArchivedC }],
+        ]),
+      };
+
+      const mockForum = {
+        availableTags: [],
+        threads: { fetchActive: vi.fn().mockResolvedValue(mockActiveThreads) },
+      };
+
+      const mockClient = {
+        user: { tag: 'TestBot#0001' },
+        channels: {
+          cache: new Map([
+            ['thread-a', { messages: { cache: { forEach: vi.fn() } } }],
+            ['thread-b', { messages: { cache: { forEach: vi.fn() } } }],
+            ['thread-c', { messages: { cache: { forEach: vi.fn() } } }],
+          ]),
+          fetch: vi.fn().mockResolvedValue(mockForum),
+        },
+      } as unknown as Client;
+
+      // Act
+      await handleClientReady(mockClient);
+
+      // Assert — B and C are archived even though A failed
+      expect(mockSetArchivedB).toHaveBeenCalledWith(true);
+      expect(mockSetArchivedC).toHaveBeenCalledWith(true);
+    });
+
     it('does not archive Discord threads that are already archived', async () => {
       // Arrange — closed GitHub issue but Discord thread already archived
       const { getIssues } = await import('../github/githubActions');

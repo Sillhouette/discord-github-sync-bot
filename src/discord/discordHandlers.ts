@@ -64,6 +64,9 @@ export async function handleClientReady(client: Client) {
 
     // Reconcile Discord thread states with GitHub on startup.
     // Archive any Discord threads that are still open but whose GitHub issue is closed.
+    // Note: fetchActive() returns only the first page of results. At current scale
+    // (single forum, small thread count) this is acceptable, but a paginated
+    // implementation would be needed if thread counts grow large.
     const activeThreads = await forum.threads.fetchActive();
     let reconciled = 0;
     for (const [threadId, channel] of activeThreads.threads) {
@@ -73,8 +76,12 @@ export async function handleClientReady(client: Client) {
         // the assignment is intentionally omitted to avoid a misleading no-op.
         // The ThreadUpdate handler checks this flag before calling openIssue, so
         // the value must be set before setArchived fires — it already is.
-        await channel.setArchived(true);
-        reconciled++;
+        try {
+          await channel.setArchived(true);
+          reconciled++;
+        } catch (err) {
+          logger.error(`handleClientReady: failed to archive thread ${threadId}: ${err instanceof Error ? err.stack : err}`);
+        }
       }
     }
     if (reconciled > 0) {

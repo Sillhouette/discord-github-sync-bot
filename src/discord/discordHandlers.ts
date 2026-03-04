@@ -77,6 +77,7 @@ export async function handleClientReady(client: Client) {
     // implementation would be needed if thread counts grow large.
     const activeThreads = await forum.threads.fetchActive();
     let reconciled = 0;
+    let orphaned = 0;
     for (const [threadId, channel] of activeThreads.threads) {
       const storeThread = store.threads.find((t) => t.id === threadId);
       if (storeThread?.archived && !channel.archived) {
@@ -90,10 +91,36 @@ export async function handleClientReady(client: Client) {
         } catch (err) {
           logger.error(`handleClientReady: failed to archive thread ${threadId}: ${err instanceof Error ? err.stack : err}`);
         }
+      } else if (!storeThread) {
+        // Orphaned Discord thread — exists in the forum but has no corresponding
+        // GitHub issue (e.g. createIssue failed on a previous run, or the bot was
+        // down when the thread was created). Recover by fetching the starter message
+        // and creating the issue now.
+        try {
+          const starterMessage = await channel.fetchStarterMessage();
+          if (starterMessage && !starterMessage.author.bot) {
+            const thread = {
+              id: threadId,
+              title: channel.name,
+              appliedTags: channel.appliedTags,
+              archived: false,
+              locked: channel.locked ?? false,
+              comments: [],
+            };
+            store.threads.push(thread);
+            await createIssue(thread, starterMessage);
+            orphaned++;
+          }
+        } catch (err) {
+          logger.error(`handleClientReady: failed to recover orphaned thread ${threadId}: ${err instanceof Error ? err.stack : err}`);
+        }
       }
     }
     if (reconciled > 0) {
       logger.info(`Reconciled ${reconciled} stale Discord thread(s) with closed GitHub issues`);
+    }
+    if (orphaned > 0) {
+      logger.info(`Recovered ${orphaned} orphaned Discord thread(s) with missing GitHub issues`);
     }
   } catch (err) {
     logger.error(`handleClientReady: reconciliation failed: ${err instanceof Error ? err.stack : err}`);

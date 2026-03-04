@@ -107,9 +107,13 @@ export async function handleClientReady(client: Client) {
               locked: channel.locked ?? false,
               comments: [],
             };
-            store.threads.push(thread);
             await createIssue(thread, starterMessage);
-            orphaned++;
+            // createIssue catches internally — only add to store if the issue was
+            // actually created (thread.number is set on success).
+            if (thread.number) {
+              store.threads.push(thread);
+              orphaned++;
+            }
           }
         } catch (err) {
           logger.error(`handleClientReady: failed to recover orphaned thread ${threadId}: ${err instanceof Error ? err.stack : err}`);

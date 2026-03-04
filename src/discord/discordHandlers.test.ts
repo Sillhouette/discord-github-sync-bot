@@ -213,6 +213,8 @@ describe('Discord Handlers', () => {
       // Arrange — no GitHub issues; one active Discord thread (orphaned)
       const { getIssues, createIssue } = await import('../github/githubActions');
       vi.mocked(getIssues).mockResolvedValue([]);
+      // Simulate a successful createIssue by setting thread.number (as the real implementation does)
+      vi.mocked(createIssue).mockImplementation(async (thread) => { thread.number = 1; });
 
       const mockStarterMessage = {
         author: { bot: false, id: 'user-1', globalName: 'TestUser', avatar: 'hash' },
@@ -303,10 +305,78 @@ describe('Discord Handlers', () => {
       expect(store.threads.find((t) => t.id === 'bot-thread')).toBeUndefined();
     });
 
+    it('does not add orphaned thread to store when createIssue fails to set thread.number', async () => {
+      // Arrange — createIssue resolves but leaves thread.number unset (internal failure)
+      const { getIssues, createIssue } = await import('../github/githubActions');
+      vi.mocked(getIssues).mockResolvedValue([]);
+      vi.mocked(createIssue).mockResolvedValue(undefined); // does not set thread.number
+
+      const mockStarterMessage = {
+        author: { bot: false, id: 'user-1', globalName: 'User', avatar: 'hash' },
+        guildId: '111', channelId: 'orphaned-thread', id: 'msg-1',
+        content: 'Help', attachments: new Collection(),
+      };
+      const mockActiveThreads = {
+        threads: new Map([
+          ['orphaned-thread', {
+            id: 'orphaned-thread', name: 'Thread', appliedTags: [], locked: false, archived: false,
+            fetchStarterMessage: vi.fn().mockResolvedValue(mockStarterMessage),
+          }],
+        ]),
+      };
+
+      const mockForum = {
+        availableTags: [],
+        threads: { fetchActive: vi.fn().mockResolvedValue(mockActiveThreads) },
+      };
+      const mockClient = {
+        user: { tag: 'TestBot#0001' },
+        channels: { cache: new Map(), fetch: vi.fn().mockResolvedValue(mockForum) },
+      } as unknown as Client;
+
+      // Act
+      await handleClientReady(mockClient);
+
+      // Assert — thread not added to store because GitHub issue was not created
+      expect(store.threads.find((t) => t.id === 'orphaned-thread')).toBeUndefined();
+    });
+
+    it('skips orphaned thread recovery when fetchStarterMessage returns null', async () => {
+      // Arrange
+      const { getIssues, createIssue } = await import('../github/githubActions');
+      vi.mocked(getIssues).mockResolvedValue([]);
+
+      const mockActiveThreads = {
+        threads: new Map([
+          ['orphaned-thread', {
+            id: 'orphaned-thread', name: 'Thread', appliedTags: [], locked: false, archived: false,
+            fetchStarterMessage: vi.fn().mockResolvedValue(null),
+          }],
+        ]),
+      };
+
+      const mockForum = {
+        availableTags: [],
+        threads: { fetchActive: vi.fn().mockResolvedValue(mockActiveThreads) },
+      };
+      const mockClient = {
+        user: { tag: 'TestBot#0001' },
+        channels: { cache: new Map(), fetch: vi.fn().mockResolvedValue(mockForum) },
+      } as unknown as Client;
+
+      // Act
+      await handleClientReady(mockClient);
+
+      // Assert
+      expect(createIssue).not.toHaveBeenCalled();
+      expect(store.threads.find((t) => t.id === 'orphaned-thread')).toBeUndefined();
+    });
+
     it('continues recovering remaining orphaned threads when one fetchStarterMessage throws', async () => {
       // Arrange
       const { getIssues, createIssue } = await import('../github/githubActions');
       vi.mocked(getIssues).mockResolvedValue([]);
+      vi.mocked(createIssue).mockImplementation(async (thread) => { thread.number = 1; });
 
       const mockStarterMessage = {
         author: { bot: false, id: 'user-1', globalName: 'User', avatar: 'hash' },

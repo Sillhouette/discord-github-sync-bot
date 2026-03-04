@@ -11,10 +11,34 @@ import {
   deleteIssue,
   deleteComment,
   getIssues,
-  octokit,
 } from './githubActions';
 import { Thread, ThreadComment } from '../interfaces';
 import { store } from '../store';
+
+// Hoisted mock instance — must be declared before vi.mock factories run.
+// Mocking @octokit/rest at the constructor level so the module-internal
+// `octokit` variable (used by getIssues, deleteComment, etc.) is the same
+// mock object that test assertions reference.
+const mockOctokit = vi.hoisted(() => ({
+  paginate: vi.fn(),
+  rest: {
+    issues: {
+      update: vi.fn(),
+      lock: vi.fn(),
+      unlock: vi.fn(),
+      create: vi.fn(),
+      createComment: vi.fn(),
+      deleteComment: vi.fn(),
+      listForRepo: vi.fn(),
+      listCommentsForRepo: vi.fn(),
+    },
+  },
+}));
+
+vi.mock('@octokit/rest', () => ({
+  // eslint-disable-next-line prefer-arrow-callback
+  Octokit: vi.fn().mockImplementation(function () { return mockOctokit; }),
+}));
 
 // Mock logger to prevent output during tests
 vi.mock('../logger', () => ({
@@ -54,29 +78,6 @@ vi.mock('../config', () => ({
 
 // Mock R2 so attachment tests don't hit real S3
 vi.mock('../r2', () => ({ uploadToR2: vi.fn().mockResolvedValue(null) }));
-
-// Mock octokit
-vi.mock('./githubActions', async () => {
-  const actual = await vi.importActual('./githubActions');
-  return {
-    ...actual,
-    octokit: {
-      paginate: vi.fn(),
-      rest: {
-        issues: {
-          update: vi.fn(),
-          lock: vi.fn(),
-          unlock: vi.fn(),
-          create: vi.fn(),
-          createComment: vi.fn(),
-          deleteComment: vi.fn(),
-          listForRepo: vi.fn(),
-          listCommentsForRepo: vi.fn(),
-        },
-      },
-    },
-  };
-});
 
 describe('GitHub Actions', () => {
   beforeEach(() => {
@@ -161,7 +162,7 @@ describe('GitHub Actions', () => {
       await closeIssue(thread);
 
       // Assert
-      expect(octokit.rest.issues.update).not.toHaveBeenCalled();
+      expect(mockOctokit.rest.issues.update).not.toHaveBeenCalled();
     });
   });
 
@@ -181,7 +182,7 @@ describe('GitHub Actions', () => {
       await openIssue(thread);
 
       // Assert
-      expect(octokit.rest.issues.update).not.toHaveBeenCalled();
+      expect(mockOctokit.rest.issues.update).not.toHaveBeenCalled();
     });
   });
 
@@ -201,7 +202,7 @@ describe('GitHub Actions', () => {
       await lockIssue(thread);
 
       // Assert
-      expect(octokit.rest.issues.lock).not.toHaveBeenCalled();
+      expect(mockOctokit.rest.issues.lock).not.toHaveBeenCalled();
     });
   });
 
@@ -221,7 +222,7 @@ describe('GitHub Actions', () => {
       await unlockIssue(thread);
 
       // Assert
-      expect(octokit.rest.issues.unlock).not.toHaveBeenCalled();
+      expect(mockOctokit.rest.issues.unlock).not.toHaveBeenCalled();
     });
   });
 
@@ -255,7 +256,7 @@ describe('GitHub Actions', () => {
       await createIssue(thread, mockMessage);
 
       // Assert - should return early without calling API
-      expect(octokit.rest.issues.create).not.toHaveBeenCalled();
+      expect(mockOctokit.rest.issues.create).not.toHaveBeenCalled();
     });
   });
 
@@ -288,7 +289,7 @@ describe('GitHub Actions', () => {
       await createIssueComment(thread, mockMessage);
 
       // Assert - should return early without calling API
-      expect(octokit.rest.issues.createComment).not.toHaveBeenCalled();
+      expect(mockOctokit.rest.issues.createComment).not.toHaveBeenCalled();
     });
   });
 
@@ -325,22 +326,66 @@ describe('GitHub Actions', () => {
         number: 42,
       };
       const commentId = 999;
+      mockOctokit.rest.issues.deleteComment.mockResolvedValue({});
 
-      // Act & Assert — deleteComment has no guard path; verify it does not
-      // rethrow API errors (the try/catch inside swallows them).
-      // Note: the internal octokit instance is not the exported mock, so we
-      // cannot assert toHaveBeenCalled() here without a deeper mock refactor.
-      await expect(deleteComment(thread, commentId)).resolves.toBeUndefined();
+      // Act
+      await deleteComment(thread, commentId);
+
+      // Assert
+      expect(mockOctokit.rest.issues.deleteComment).toHaveBeenCalledWith(
+        expect.objectContaining({ comment_id: commentId }),
+      );
     });
   });
 
   describe('getIssues', () => {
-    it('returns an empty array and does not throw when the API fails', async () => {
-      // Arrange — nothing to mock; the internal octokit will reject (no network in tests)
+    it('returns threads for all paginated issues, marking closed ones as archived', async () => {
+      // Arrange — Discord URLs must use numeric snowflake IDs (regex: /\d+\/\d+\/\d+/)
+      const openLink   = '<kbd>[![u](a)](https://discord.com/channels/111/222000001/333000001)</kbd>';
+      const closedLink = '<kbd>[![u](a)](https://discord.com/channels/111/222000002/333000002)</kbd>';
+      mockOctokit.paginate
+        .mockResolvedValueOnce([
+          // first call: listForRepo
+          { title: 'Open',   body: openLink,   number: 1, node_id: 'n1', locked: false, state: 'open'   },
+          { title: 'Closed', body: closedLink, number: 2, node_id: 'n2', locked: false, state: 'closed' },
+        ])
+        .mockResolvedValueOnce([]); // second call: listCommentsForRepo
 
-      // Act & Assert — getIssues catches all errors and returns []
+      // Act
+      const threads = await getIssues();
+
+      // Assert
+      expect(threads).toHaveLength(2);
+      expect(threads.find((t) => t.id === '333000001')?.archived).toBe(false);
+      expect(threads.find((t) => t.id === '333000002')?.archived).toBe(true);
+    });
+
+    it('calls paginate with listForRepo and listCommentsForRepo (not listForRepo directly)', async () => {
+      // Arrange
+      mockOctokit.paginate.mockResolvedValue([]);
+
+      // Act
+      await getIssues();
+
+      // Assert — paginate called twice (issues + comments); direct listForRepo never called
+      expect(mockOctokit.paginate).toHaveBeenCalledTimes(2);
+      expect(mockOctokit.paginate).toHaveBeenCalledWith(
+        mockOctokit.rest.issues.listForRepo,
+        expect.objectContaining({ state: 'all', per_page: 100 }),
+      );
+      expect(mockOctokit.paginate).toHaveBeenCalledWith(
+        mockOctokit.rest.issues.listCommentsForRepo,
+        expect.objectContaining({ per_page: 100 }),
+      );
+      expect(mockOctokit.rest.issues.listForRepo).not.toHaveBeenCalled();
+    });
+
+    it('returns an empty array and does not throw when paginate rejects', async () => {
+      // Arrange
+      mockOctokit.paginate.mockRejectedValue(new Error('network error'));
+
+      // Act & Assert
       await expect(getIssues()).resolves.toEqual([]);
     });
   });
 });
-

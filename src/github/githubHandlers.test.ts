@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { Request } from "express";
-import { handleCreated, handleEdited } from "./githubHandlers";
+import { handleCreated, handleEdited, handleDeleted } from "./githubHandlers";
 import { store } from "../store";
 
 // Mock logger to prevent output during tests
@@ -223,5 +223,40 @@ describe("handleEdited", () => {
       body: "Updated comment text",
       node_id: "issue-node-1",
     });
+  });
+});
+
+describe("handleDeleted", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    store.threads = [];
+  });
+
+  it("ignores the event when req.body.comment is present (issue_comment.deleted echo)", async () => {
+    // Arrange
+    const { deleteThread } = await import("../discord/discordActions");
+    const req = {
+      body: { comment: { id: 99 }, issue: { node_id: "node-1" } },
+    } as unknown as Request;
+
+    // Act
+    await handleDeleted(req);
+
+    // Assert
+    expect(deleteThread).not.toHaveBeenCalled();
+  });
+
+  it("calls deleteThread when req.body.comment is absent (issues.deleted event)", async () => {
+    // Arrange
+    const { deleteThread } = await import("../discord/discordActions");
+    const req = {
+      body: { issue: { node_id: "node-1" } },
+    } as unknown as Request;
+
+    // Act
+    await handleDeleted(req);
+
+    // Assert
+    expect(deleteThread).toHaveBeenCalledWith("node-1");
   });
 });

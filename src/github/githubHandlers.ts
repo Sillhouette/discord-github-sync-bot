@@ -125,6 +125,10 @@ export async function handleUnlocked(req: Request) {
 }
 
 export async function handleDeleted(req: Request) {
+  // issue_comment.deleted echoes back as a "deleted" webhook event with a
+  // comment field. Guard here to avoid nuking the Discord thread when the
+  // bot deletes a comment and GitHub fires the echo.
+  if (req.body.comment) return;
   const node_id = getIssueNodeId(req);
   await deleteThread(node_id);
 }

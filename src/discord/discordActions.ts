@@ -250,7 +250,11 @@ export async function archiveThread(node_id: string | undefined) {
   info(Actions.Closed, thread);
 
   thread.archived = true;
-  await channel.setArchived(true);
+  try {
+    await channel.setArchived(true);
+  } catch (err) {
+    logger.error(`archiveThread failed: ${err instanceof Error ? err.stack : err}`);
+  }
 }
 
 export async function unarchiveThread(node_id: string | undefined) {
@@ -260,7 +264,11 @@ export async function unarchiveThread(node_id: string | undefined) {
   info(Actions.Reopened, thread);
 
   thread.archived = false;
-  await channel.setArchived(false);
+  try {
+    await channel.setArchived(false);
+  } catch (err) {
+    logger.error(`unarchiveThread failed: ${err instanceof Error ? err.stack : err}`);
+  }
 }
 
 export async function lockThread(node_id: string | undefined) {
@@ -270,14 +278,18 @@ export async function lockThread(node_id: string | undefined) {
   info(Actions.Locked, thread);
 
   thread.locked = true;
-  if (channel.archived) {
-    thread.lockArchiving = true;
-    thread.lockLocking = true;
-    await channel.setArchived(false);
-    await channel.setLocked(true);
-    await channel.setArchived(true);
-  } else {
-    await channel.setLocked(true);
+  try {
+    if (channel.archived) {
+      thread.lockArchiving = true;
+      thread.lockLocking = true;
+      await channel.setArchived(false);
+      await channel.setLocked(true);
+      await channel.setArchived(true);
+    } else {
+      await channel.setLocked(true);
+    }
+  } catch (err) {
+    logger.error(`lockThread failed: ${err instanceof Error ? err.stack : err}`);
   }
 }
 
@@ -288,14 +300,18 @@ export async function unlockThread(node_id: string | undefined) {
   info(Actions.Unlocked, thread);
 
   thread.locked = false;
-  if (channel.archived) {
-    thread.lockArchiving = true;
-    thread.lockLocking = true;
-    await channel.setArchived(false);
-    await channel.setLocked(false);
-    await channel.setArchived(true);
-  } else {
-    await channel.setLocked(false);
+  try {
+    if (channel.archived) {
+      thread.lockArchiving = true;
+      thread.lockLocking = true;
+      await channel.setArchived(false);
+      await channel.setLocked(false);
+      await channel.setArchived(true);
+    } else {
+      await channel.setLocked(false);
+    }
+  } catch (err) {
+    logger.error(`unlockThread failed: ${err instanceof Error ? err.stack : err}`);
   }
 }
 
@@ -306,7 +322,11 @@ export async function deleteThread(node_id: string | undefined) {
   info(Actions.Deleted, thread);
 
   store.deleteThread(thread?.id);
-  await channel.delete();
+  try {
+    await channel.delete();
+  } catch (err) {
+    logger.error(`deleteThread failed: ${err instanceof Error ? err.stack : err}`);
+  }
 }
 
 export async function getThreadChannel(node_id: string | undefined): Promise<{

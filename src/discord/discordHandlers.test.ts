@@ -208,6 +208,48 @@ describe('Discord Handlers', () => {
       // Assert — already archived, so setArchived is not called again
       expect(mockSetArchived).not.toHaveBeenCalled();
     });
+
+    it('excludes a thread from the store when its channel fetch times out', async () => {
+      // Arrange — one thread whose fetch never resolves
+      vi.useFakeTimers();
+      const { getIssues } = await import('../github/githubActions');
+      vi.mocked(getIssues).mockResolvedValue([
+        { id: 'thread-slow', title: 'Slow', appliedTags: [], comments: [], archived: false, locked: false },
+        { id: 'thread-ok',   title: 'OK',   appliedTags: [], comments: [], archived: false, locked: false },
+      ]);
+
+      const mockForum = {
+        availableTags: [],
+        threads: { fetchActive: vi.fn().mockResolvedValue({ threads: new Map() }) },
+      };
+
+      const mockClient = {
+        user: { tag: 'TestBot#0001' },
+        channels: {
+          cache: new Map([
+            // thread-ok is in cache; thread-slow is not (will be fetched)
+            ['thread-ok', { messages: { cache: { forEach: vi.fn() } } }],
+          ]),
+          fetch: vi.fn().mockImplementation((id: string) => {
+            if (id === 'forum-channel-id') return Promise.resolve(mockForum);
+            // thread-slow fetch hangs forever
+            return new Promise(() => {});
+          }),
+        },
+      } as unknown as Client;
+
+      // Act — start handleClientReady then advance timers past the 10s timeout,
+      // using advanceTimersByTimeAsync so promise microtasks are flushed between ticks.
+      const readyPromise = handleClientReady(mockClient);
+      await vi.advanceTimersByTimeAsync(11_000);
+      await readyPromise;
+
+      vi.useRealTimers();
+
+      // Assert — slow thread excluded; ok thread retained
+      expect(store.threads.find((t) => t.id === 'thread-slow')).toBeUndefined();
+      expect(store.threads.find((t) => t.id === 'thread-ok')).toBeDefined();
+    });
   });
 
   describe('handleThreadCreate', () => {

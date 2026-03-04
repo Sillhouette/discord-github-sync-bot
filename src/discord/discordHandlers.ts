@@ -31,7 +31,10 @@ export async function handleClientReady(client: Client) {
 
   store.threads = await getIssues();
 
-  // Fetch cache for closed threads
+  // Fetch cache for closed threads.
+  // Each fetch is raced against a 10-second timeout so a single hanging API
+  // call cannot block startup indefinitely.
+  const CHANNEL_FETCH_TIMEOUT_MS = 10_000;
   const threadPromises = store.threads.map(async (thread) => {
     const cachedChannel = client.channels.cache.get(thread.id) as
       | ThreadChannel
@@ -41,9 +44,16 @@ export async function handleClientReady(client: Client) {
       return thread; // Returning thread as valid
     } else {
       try {
-        const channel = (await client.channels.fetch(
-          thread.id,
-        )) as ThreadChannel;
+        const fetchWithTimeout = Promise.race([
+          client.channels.fetch(thread.id),
+          new Promise<never>((_, reject) =>
+            setTimeout(
+              () => reject(new Error(`timeout fetching channel ${thread.id}`)),
+              CHANNEL_FETCH_TIMEOUT_MS,
+            ),
+          ),
+        ]);
+        const channel = (await fetchWithTimeout) as ThreadChannel;
         channel.messages.cache.forEach((message) => message.id);
         return thread; // Returning thread as valid
       } catch (error) {

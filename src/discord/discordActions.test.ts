@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { extractImageUrls, stripImageMarkdown, truncateContent, createThread, createComment, updateComment, evictForumCache } from "./discordActions";
+import { extractImageUrls, stripImageMarkdown, truncateContent, createThread, createComment, updateComment, evictForumCache, archiveThread, unarchiveThread, lockThread, unlockThread, deleteThread } from "./discordActions";
 
 vi.mock("../config", () => ({
   config: {
@@ -23,7 +23,7 @@ vi.mock("../logger", () => ({
   getDiscordUrl: vi.fn(),
 }));
 
-vi.mock("../store", () => ({ store: { threads: [] } }));
+vi.mock("../store", () => ({ store: { threads: [], deleteThread: vi.fn() } }));
 
 vi.mock("../commentMap", () => ({ saveCommentMapping: vi.fn() }));
 
@@ -952,5 +952,105 @@ describe("evictForumCache", () => {
       node_id: "gh-settle-1",
     });
     expect(mockCreateWebhook).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("thread state actions error handling", () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const { store } = await import("../store");
+    store.threads = [];
+    const discordModule = await import("./discord");
+    (discordModule.default.channels.cache as Map<string, unknown>).clear();
+  });
+
+  it("archiveThread logs and does not throw when setArchived rejects", async () => {
+    // Arrange
+    const { store } = await import("../store");
+    const discordModule = await import("./discord");
+    const { logger } = await import("../logger");
+    store.threads = [
+      { id: "ch-err-archive", title: "T", appliedTags: [], comments: [], archived: false, locked: false, node_id: "gh-err-archive" },
+    ];
+    const mockChannel = { archived: false, setArchived: vi.fn().mockRejectedValue(new Error("forbidden")) };
+    (discordModule.default.channels.cache as Map<string, unknown>).set("ch-err-archive", mockChannel);
+
+    // Act
+    await expect(archiveThread("gh-err-archive")).resolves.toBeUndefined();
+
+    // Assert
+    expect(vi.mocked(logger.error)).toHaveBeenCalledWith(expect.stringContaining("archiveThread failed"));
+  });
+
+  it("unarchiveThread logs and does not throw when setArchived rejects", async () => {
+    // Arrange
+    const { store } = await import("../store");
+    const discordModule = await import("./discord");
+    const { logger } = await import("../logger");
+    store.threads = [
+      { id: "ch-err-unarchive", title: "T", appliedTags: [], comments: [], archived: true, locked: false, node_id: "gh-err-unarchive" },
+    ];
+    const mockChannel = { archived: true, setArchived: vi.fn().mockRejectedValue(new Error("forbidden")) };
+    (discordModule.default.channels.cache as Map<string, unknown>).set("ch-err-unarchive", mockChannel);
+
+    // Act
+    await expect(unarchiveThread("gh-err-unarchive")).resolves.toBeUndefined();
+
+    // Assert
+    expect(vi.mocked(logger.error)).toHaveBeenCalledWith(expect.stringContaining("unarchiveThread failed"));
+  });
+
+  it("lockThread logs and does not throw when setLocked rejects", async () => {
+    // Arrange
+    const { store } = await import("../store");
+    const discordModule = await import("./discord");
+    const { logger } = await import("../logger");
+    store.threads = [
+      { id: "ch-err-lock", title: "T", appliedTags: [], comments: [], archived: false, locked: false, node_id: "gh-err-lock" },
+    ];
+    const mockChannel = { archived: false, locked: false, setLocked: vi.fn().mockRejectedValue(new Error("rate limited")) };
+    (discordModule.default.channels.cache as Map<string, unknown>).set("ch-err-lock", mockChannel);
+
+    // Act
+    await expect(lockThread("gh-err-lock")).resolves.toBeUndefined();
+
+    // Assert
+    expect(vi.mocked(logger.error)).toHaveBeenCalledWith(expect.stringContaining("lockThread failed"));
+  });
+
+  it("unlockThread logs and does not throw when setLocked rejects", async () => {
+    // Arrange
+    const { store } = await import("../store");
+    const discordModule = await import("./discord");
+    const { logger } = await import("../logger");
+    store.threads = [
+      { id: "ch-err-unlock", title: "T", appliedTags: [], comments: [], archived: false, locked: true, node_id: "gh-err-unlock" },
+    ];
+    const mockChannel = { archived: false, locked: true, setLocked: vi.fn().mockRejectedValue(new Error("rate limited")) };
+    (discordModule.default.channels.cache as Map<string, unknown>).set("ch-err-unlock", mockChannel);
+
+    // Act
+    await expect(unlockThread("gh-err-unlock")).resolves.toBeUndefined();
+
+    // Assert
+    expect(vi.mocked(logger.error)).toHaveBeenCalledWith(expect.stringContaining("unlockThread failed"));
+  });
+
+  it("deleteThread logs and does not throw when channel.delete rejects", async () => {
+    // Arrange
+    const { store } = await import("../store");
+    const discordModule = await import("./discord");
+    const { logger } = await import("../logger");
+    store.threads = [
+      { id: "ch-err-delete", title: "T", appliedTags: [], comments: [], archived: false, locked: false, node_id: "gh-err-delete" },
+    ];
+    const mockChannel = { delete: vi.fn().mockRejectedValue(new Error("missing permissions")) };
+    (discordModule.default.channels.cache as Map<string, unknown>).set("ch-err-delete", mockChannel);
+
+    // Act
+    await expect(deleteThread("gh-err-delete")).resolves.toBeUndefined();
+
+    // Assert
+    expect(vi.mocked(logger.error)).toHaveBeenCalledWith(expect.stringContaining("deleteThread failed"));
   });
 });

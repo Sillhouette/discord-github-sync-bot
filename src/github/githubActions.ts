@@ -380,7 +380,7 @@ async function fillCommentsData() {
     });
 
     data.forEach((comment) => {
-      const { channelId, id } = getDiscordInfoFromGithubBody(comment.body!);
+      const { channelId, id } = getDiscordInfoFromGithubBody(comment.body ?? "");
       if (!channelId || !id) return;
 
       const thread = store.threads.find((i) => i.id === channelId);

@@ -31,16 +31,15 @@ export async function handleClientReady(client: Client) {
 
   store.threads = await getIssues();
 
-  // Fetch cache for closed threads.
-  // Each fetch is raced against a 10-second timeout so a single hanging API
-  // call cannot block startup indefinitely.
+  // Validate that each thread's Discord channel still exists; remove any that
+  // have been deleted. Each fetch is raced against a 10-second timeout so a
+  // single hanging API call cannot block startup indefinitely.
   const CHANNEL_FETCH_TIMEOUT_MS = 10_000;
   const threadPromises = store.threads.map(async (thread) => {
     const cachedChannel = client.channels.cache.get(thread.id) as
       | ThreadChannel
       | undefined;
     if (cachedChannel) {
-      cachedChannel.messages.cache.forEach((message) => message.id);
       return thread; // Returning thread as valid
     } else {
       try {
@@ -53,8 +52,7 @@ export async function handleClientReady(client: Client) {
             ),
           ),
         ]);
-        const channel = (await fetchWithTimeout) as ThreadChannel;
-        channel.messages.cache.forEach((message) => message.id);
+        await fetchWithTimeout;
         return thread; // Returning thread as valid
       } catch (error) {
         return; // Marking thread as invalid

@@ -10,6 +10,7 @@ import {
   createIssueComment,
   deleteIssue,
   deleteComment,
+  getIssues,
   octokit,
 } from './githubActions';
 import { Thread, ThreadComment } from '../interfaces';
@@ -60,6 +61,7 @@ vi.mock('./githubActions', async () => {
   return {
     ...actual,
     octokit: {
+      paginate: vi.fn(),
       rest: {
         issues: {
           update: vi.fn(),
@@ -329,6 +331,15 @@ describe('GitHub Actions', () => {
       // Note: the internal octokit instance is not the exported mock, so we
       // cannot assert toHaveBeenCalled() here without a deeper mock refactor.
       await expect(deleteComment(thread, commentId)).resolves.toBeUndefined();
+    });
+  });
+
+  describe('getIssues', () => {
+    it('returns an empty array and does not throw when the API fails', async () => {
+      // Arrange — nothing to mock; the internal octokit will reject (no network in tests)
+
+      // Act & Assert — getIssues catches all errors and returns []
+      await expect(getIssues()).resolves.toEqual([]);
     });
   });
 });

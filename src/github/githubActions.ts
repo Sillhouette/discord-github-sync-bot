@@ -349,19 +349,17 @@ export async function deleteComment(thread: Thread, comment_id: number) {
 
 export async function getIssues() {
   try {
-    const response = await octokit.rest.issues.listForRepo({
+    // Use paginate to fetch all issues — listForRepo defaults to 30 per page
+    // and would silently miss older issues on repos with more than 30 total.
+    const data = await octokit.paginate(octokit.rest.issues.listForRepo, {
       ...repoCredentials,
       state: "all",
+      per_page: 100,
     });
-
-    if (!response || !response.data) {
-      error("Failed to get issues - No response data");
-      return [];
-    }
 
     await fillCommentsData(); // Wait for comments data to be filled
 
-    const threads = formatIssuesToThreads(response.data as GitIssue[]);
+    const threads = formatIssuesToThreads(data as GitIssue[]);
     loadInto(threads); // Restore GitHub→Discord webhook message mappings from disk
     return threads;
   } catch (err) {

@@ -380,6 +380,34 @@ describe('GitHub Actions', () => {
       expect(mockOctokit.rest.issues.listForRepo).not.toHaveBeenCalled();
     });
 
+    it('populates thread.comments from GitHub comment data', async () => {
+      // Arrange — one issue with a matching comment; verifies fillCommentsData
+      // runs AFTER formatIssuesToThreads so the thread exists when comments are matched.
+      //
+      // Discord forum posts: the thread channel ID and initial message ID are the
+      // same value, so the issue URL has format channels/{guild}/{threadId}/{threadId}.
+      // fillCommentsData matches threads by the channelId (2nd segment) of the
+      // comment URL, which must equal the thread.id set from the issue URL's 3rd segment.
+      const threadId    = '777000001';
+      const issueLink   = `<kbd>[![u](a)](https://discord.com/channels/111/${threadId}/${threadId})</kbd>`;
+      const commentLink = `<kbd>[![u](a)](https://discord.com/channels/111/${threadId}/888000001)</kbd>`;
+      mockOctokit.paginate
+        .mockResolvedValueOnce([
+          { title: 'Issue', body: issueLink, number: 1, node_id: 'n1', locked: false, state: 'open' },
+        ])
+        .mockResolvedValueOnce([
+          { id: 42, body: `comment text ${commentLink}` },
+        ]);
+
+      // Act
+      const threads = await getIssues();
+
+      // Assert — thread has one comment mapped from the GitHub comment id
+      expect(threads).toHaveLength(1);
+      expect(threads[0].comments).toHaveLength(1);
+      expect(threads[0].comments[0]).toEqual({ id: '888000001', git_id: 42 });
+    });
+
     it('returns an empty array and does not throw when paginate rejects', async () => {
       // Arrange
       mockOctokit.paginate.mockRejectedValue(new Error('network error'));

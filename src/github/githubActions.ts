@@ -357,9 +357,8 @@ export async function getIssues() {
       per_page: 100,
     });
 
-    await fillCommentsData(); // Wait for comments data to be filled
-
     const threads = formatIssuesToThreads(data as GitIssue[]);
+    await fillCommentsData(threads); // Populate thread.comments before returning
     loadInto(threads); // Restore GitHub→Discord webhook message mappings from disk
     return threads;
   } catch (err) {
@@ -372,7 +371,7 @@ export async function getIssues() {
   }
 }
 
-async function fillCommentsData() {
+async function fillCommentsData(threads: Thread[]) {
   try {
     const data = await octokit.paginate(octokit.rest.issues.listCommentsForRepo, {
       ...repoCredentials,
@@ -383,7 +382,7 @@ async function fillCommentsData() {
       const { channelId, id } = getDiscordInfoFromGithubBody(comment.body ?? "");
       if (!channelId || !id) return;
 
-      const thread = store.threads.find((i) => i.id === channelId);
+      const thread = threads.find((i) => i.id === channelId);
       thread?.comments.push({ id, git_id: comment.id });
     });
   } catch (err) {

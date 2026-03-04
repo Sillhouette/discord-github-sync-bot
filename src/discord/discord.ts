@@ -6,6 +6,7 @@ import {
 } from "discord.js";
 import { config } from "../config";
 import {
+  handleChannelDelete,
   handleChannelUpdate,
   handleClientReady,
   handleMessageCreate,
@@ -40,6 +41,7 @@ export function initDiscord() {
   client.on(Events.ThreadCreate, handleThreadCreate);
   client.on(Events.ThreadUpdate, handleThreadUpdate);
   client.on(Events.ChannelUpdate, handleChannelUpdate);
+  client.on(Events.ChannelDelete, handleChannelDelete);
   client.on(Events.MessageCreate, handleMessageCreate);
   client.on(Events.ThreadDelete, handleThreadDelete);
   client.on(Events.MessageDelete, handleMessageDelete);

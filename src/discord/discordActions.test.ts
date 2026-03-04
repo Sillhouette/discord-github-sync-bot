@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { extractImageUrls, stripImageMarkdown, createComment, updateComment } from "./discordActions";
+import { extractImageUrls, stripImageMarkdown, truncateContent, createThread, createComment, updateComment, evictForumCache } from "./discordActions";
 
 vi.mock("../config", () => ({
   config: {
@@ -220,6 +220,156 @@ describe("stripImageMarkdown", () => {
   });
 });
 
+describe("truncateContent", () => {
+  it("returns the text unchanged when at or below 2000 characters", () => {
+    // Arrange
+    const text = "a".repeat(2000);
+
+    // Act
+    const result = truncateContent(text);
+
+    // Assert
+    expect(result).toBe(text);
+    expect(result.length).toBe(2000);
+  });
+
+  it("truncates text exceeding 2000 characters and appends suffix", () => {
+    // Arrange
+    const text = "a".repeat(2500);
+
+    // Act
+    const result = truncateContent(text);
+
+    // Assert
+    expect(result.length).toBe(2000);
+    expect(result).toContain("*(truncated — see GitHub for full comment)*");
+  });
+
+  it("truncates text that is exactly 2001 characters", () => {
+    // Arrange — one character over the limit; the boundary itself must trigger truncation
+    const text = "a".repeat(2001);
+
+    // Act
+    const result = truncateContent(text);
+
+    // Assert
+    expect(result.length).toBe(2000);
+    expect(result).toContain("*(truncated — see GitHub for full comment)*");
+  });
+
+  it("returns short text unchanged", () => {
+    // Arrange
+    const text = "short message";
+
+    // Act
+    const result = truncateContent(text);
+
+    // Assert
+    expect(result).toBe("short message");
+  });
+
+  it("does not split emoji surrogate pairs when truncating", () => {
+    // Arrange — each 🗡️ is 2 UTF-16 code units but 1 code point; fill just over limit
+    const emoji = "🗡️";
+    const text = emoji.repeat(1001); // 1001 code points, well over 2000
+
+    // Act
+    const result = truncateContent(text);
+
+    // Assert — result must be valid (no malformed trailing surrogate)
+    expect([...result].every((cp) => cp !== "\uFFFD")).toBe(true);
+    expect(result).toContain("*(truncated — see GitHub for full comment)*");
+    expect([...result].length).toBe(2000);
+  });
+});
+
+describe("createThread", () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const { store } = await import("../store");
+    store.threads = [];
+    const discordModule = await import("./discord");
+    (discordModule.default.channels.cache as Map<string, unknown>).clear();
+  });
+
+  it("formats opening message as login attribution followed by body", async () => {
+    // Arrange
+    const mockCreate = vi.fn().mockResolvedValue({ id: "thread-fmt-1" });
+    const mockForum = { threads: { create: mockCreate } };
+
+    const { store } = await import("../store");
+    const discordModule = await import("./discord");
+
+    store.threads = [
+      {
+        id: "thread-fmt-1",
+        title: "Test issue",
+        appliedTags: [],
+        comments: [],
+        archived: false,
+        locked: false,
+      },
+    ];
+    (discordModule.default.channels.cache as Map<string, unknown>).set(
+      "test-channel-id",
+      mockForum,
+    );
+
+    // Act
+    await createThread({
+      login: "octocat",
+      title: "Test issue",
+      body: "Something is broken.",
+      appliedTags: [],
+      node_id: "node-1",
+      number: 1,
+    });
+
+    // Assert
+    const content = mockCreate.mock.calls[0][0].message.content as string;
+    expect(content).toBe("**octocat** (GitHub)\n\nSomething is broken.");
+  });
+
+  it("truncates opening message exceeding 2000 characters", async () => {
+    // Arrange
+    const mockCreate = vi.fn().mockResolvedValue({ id: "thread-trunc-long-1" });
+    const mockForum = { threads: { create: mockCreate } };
+
+    const { store } = await import("../store");
+    const discordModule = await import("./discord");
+
+    store.threads = [
+      {
+        id: "thread-trunc-long-1",
+        title: "Long issue",
+        appliedTags: [],
+        comments: [],
+        archived: false,
+        locked: false,
+      },
+    ];
+    (discordModule.default.channels.cache as Map<string, unknown>).set(
+      "test-channel-id",
+      mockForum,
+    );
+
+    // Act
+    await createThread({
+      login: "octocat",
+      title: "Long issue",
+      body: "x".repeat(3000),
+      appliedTags: [],
+      node_id: "node-trunc-long-1",
+      number: 2,
+    });
+
+    // Assert
+    const content = mockCreate.mock.calls[0][0].message.content as string;
+    expect([...content].length).toBe(2000);
+    expect(content).toContain("*(truncated — see GitHub for full comment)*");
+  });
+});
+
 describe("createComment", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -270,6 +420,140 @@ describe("createComment", () => {
     // Assert
     expect(mockSend).toHaveBeenCalled();
     expect(saveCommentMapping).toHaveBeenCalledWith(42, "discord-msg-777", "gh-node-create-1");
+  });
+
+  it("truncates body exceeding 2000 characters before sending", async () => {
+    // Arrange
+    const mockSend = vi.fn().mockResolvedValue({ id: "discord-msg-trunc-1" });
+    const mockCreateWebhook = vi.fn().mockResolvedValue({ send: mockSend });
+    const mockChannel = {
+      parentId: "forum-trunc-1",
+      parent: { createWebhook: mockCreateWebhook },
+    };
+
+    const { store } = await import("../store");
+    const discordModule = await import("./discord");
+
+    store.threads = [
+      {
+        id: "thread-trunc-1",
+        title: "Test",
+        appliedTags: [],
+        node_id: "gh-node-trunc-1",
+        comments: [],
+        archived: false,
+        locked: false,
+      },
+    ];
+    (discordModule.default.channels.cache as Map<string, unknown>).set(
+      "thread-trunc-1",
+      mockChannel,
+    );
+
+    // Act
+    await createComment({
+      git_id: 99,
+      body: "x".repeat(3000),
+      login: "octocat",
+      avatar_url: "https://github.com/octocat.png",
+      node_id: "gh-node-trunc-1",
+    });
+
+    // Assert — content sent to Discord must be at most 2000 chars
+    const { MessagePayload } = await import("discord.js");
+    const callArg = (MessagePayload.create as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    expect([...callArg.content].length).toBe(2000);
+    expect(callArg.content).toContain("*(truncated — see GitHub for full comment)*");
+  });
+
+  it("does not start second task until first send completes", async () => {
+    // Arrange — Alice's send is deferred; Bob's send resolves immediately.
+    // Alice takes the createWebhook path (no rename); Bob hits the cached-webhook
+    // path and calls webhook.edit. The queue must hold Bob's rename until Alice's
+    // send resolves.
+    const log: string[] = [];
+    let resolveAliceSend!: () => void;
+
+    const mockSend = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<{ id: string }>((resolve) => {
+            resolveAliceSend = () => {
+              log.push("alice-send");
+              resolve({ id: "msg-alice" });
+            };
+          }),
+      )
+      .mockImplementationOnce(() => {
+        log.push("bob-send");
+        return Promise.resolve({ id: "msg-bob" });
+      });
+
+    const mockWebhook = {
+      edit: vi.fn(({ name }: { name: string }) => {
+        log.push(`rename-${name}`);
+        return Promise.resolve();
+      }),
+      send: mockSend,
+    };
+
+    const mockCreateWebhook = vi.fn().mockResolvedValue(mockWebhook);
+    const mockChannel = {
+      parentId: "forum-race-1",
+      parent: { createWebhook: mockCreateWebhook },
+    };
+
+    const { store } = await import("../store");
+    const discordModule = await import("./discord");
+
+    store.threads = [
+      {
+        id: "thread-race-1",
+        title: "Race test",
+        appliedTags: [],
+        node_id: "gh-node-race-1",
+        comments: [],
+        archived: false,
+        locked: false,
+      },
+    ];
+    (discordModule.default.channels.cache as Map<string, unknown>).set(
+      "thread-race-1",
+      mockChannel,
+    );
+
+    // Act — fire both concurrently
+    const alicePromise = createComment({
+      git_id: 1,
+      body: "Alice",
+      login: "alice",
+      avatar_url: "https://example.com/alice.png",
+      node_id: "gh-node-race-1",
+    });
+    const bobPromise = createComment({
+      git_id: 2,
+      body: "Bob",
+      login: "bob",
+      avatar_url: "https://example.com/bob.png",
+      node_id: "gh-node-race-1",
+    });
+
+    // Drain all pending microtasks: Alice's task starts, createWebhook resolves,
+    // send is called and resolveAliceSend is assigned — but send is still pending.
+    await new Promise<void>((r) => setImmediate(r));
+
+    // Bob's task has not started yet — Alice's send is still pending
+    expect(log).not.toContain("rename-bob");
+    expect(log).not.toContain("bob-send");
+
+    // Complete Alice's send, unblocking Bob's task
+    resolveAliceSend();
+    await Promise.all([alicePromise, bobPromise]);
+
+    // Assert — Bob's rename only happens after Alice's send completes
+    expect(log.indexOf("alice-send")).toBeLessThan(log.indexOf("rename-bob"));
+    expect(log.indexOf("rename-bob")).toBeLessThan(log.indexOf("bob-send"));
   });
 });
 
@@ -439,5 +723,165 @@ describe("updateComment", () => {
     expect(logger.error).toHaveBeenCalledWith(
       expect.stringContaining("no webhook found"),
     );
+  });
+
+  it("truncates body exceeding 2000 characters before editing", async () => {
+    // Arrange — cold cache; fetchWebhooks returns a valid webhook
+    const mockEditMessage = vi.fn().mockResolvedValue({});
+    const mockWebhook = { applicationId: "bot-app-id", editMessage: mockEditMessage };
+    const mockHooks = {
+      find: vi.fn((predicate: (h: typeof mockWebhook) => boolean) =>
+        predicate(mockWebhook) ? mockWebhook : undefined,
+      ),
+      first: vi.fn(() => mockWebhook),
+    };
+    const mockChannel = {
+      parentId: "forum-trunc-update-1",
+      parent: { fetchWebhooks: vi.fn().mockResolvedValue(mockHooks) },
+    };
+
+    const { store } = await import("../store");
+    const discordModule = await import("./discord");
+
+    store.threads = [
+      {
+        id: "thread-trunc-update-1",
+        title: "Test",
+        appliedTags: [],
+        node_id: "gh-node-trunc-update-1",
+        comments: [{ id: "discord-msg-trunc-edit-1", git_id: 101 }],
+        archived: false,
+        locked: false,
+      },
+    ];
+    (discordModule.default.channels.cache as Map<string, unknown>).set(
+      "thread-trunc-update-1",
+      mockChannel,
+    );
+
+    // Act
+    await updateComment({
+      discord_id: "discord-msg-trunc-edit-1",
+      body: "x".repeat(3000),
+      node_id: "gh-node-trunc-update-1",
+    });
+
+    // Assert — content passed to editMessage must be at most 2000 chars
+    const editedContent = mockEditMessage.mock.calls[0][1].content as string;
+    expect([...editedContent].length).toBe(2000);
+    expect(editedContent).toContain("*(truncated — see GitHub for full comment)*");
+  });
+});
+
+describe("evictForumCache", () => {
+  it("evicts the webhook cache so the next createComment creates a fresh webhook", async () => {
+    // Arrange — prime the cache with one createComment call
+    const mockSend = vi.fn().mockResolvedValue({ id: "msg-1" });
+    const mockCreateWebhook = vi.fn().mockResolvedValue({ send: mockSend });
+    const mockChannel = {
+      parentId: "forum-evict-1",
+      parent: { createWebhook: mockCreateWebhook },
+    };
+
+    const { store } = await import("../store");
+    const discordModule = await import("./discord");
+
+    store.threads = [
+      {
+        id: "thread-evict-1",
+        title: "Evict test",
+        appliedTags: [],
+        node_id: "gh-evict-1",
+        comments: [],
+        archived: false,
+        locked: false,
+      },
+    ];
+    (discordModule.default.channels.cache as Map<string, unknown>).set(
+      "thread-evict-1",
+      mockChannel,
+    );
+
+    await createComment({
+      git_id: 1,
+      body: "first",
+      login: "alice",
+      avatar_url: "a",
+      node_id: "gh-evict-1",
+    });
+    expect(mockCreateWebhook).toHaveBeenCalledTimes(1);
+
+    // Act — evict the cache
+    evictForumCache("forum-evict-1");
+
+    // Reset send mock so the second call gets a clean webhook
+    mockSend.mockResolvedValue({ id: "msg-2" });
+    mockCreateWebhook.mockResolvedValue({ send: mockSend });
+
+    await createComment({
+      git_id: 2,
+      body: "second",
+      login: "bob",
+      avatar_url: "b",
+      node_id: "gh-evict-1",
+    });
+
+    // Assert — createWebhook called again because cache was evicted
+    expect(mockCreateWebhook).toHaveBeenCalledTimes(2);
+  });
+
+  it("self-evicts the queue entry once all pending tasks settle", async () => {
+    // Arrange
+    const mockSend = vi.fn().mockResolvedValue({ id: "msg-settle" });
+    const mockCreateWebhook = vi.fn().mockResolvedValue({ send: mockSend });
+    const mockChannel = {
+      parentId: "forum-settle-1",
+      parent: { createWebhook: mockCreateWebhook },
+    };
+
+    const { store } = await import("../store");
+    const discordModule = await import("./discord");
+
+    store.threads = [
+      {
+        id: "thread-settle-1",
+        title: "Settle test",
+        appliedTags: [],
+        node_id: "gh-settle-1",
+        comments: [],
+        archived: false,
+        locked: false,
+      },
+    ];
+    (discordModule.default.channels.cache as Map<string, unknown>).set(
+      "thread-settle-1",
+      mockChannel,
+    );
+
+    // Act — one createComment, let it fully resolve
+    await createComment({
+      git_id: 10,
+      body: "hello",
+      login: "alice",
+      avatar_url: "a",
+      node_id: "gh-settle-1",
+    });
+
+    // Drain any cleanup microtasks from the self-eviction .then()
+    await new Promise<void>((r) => setImmediate(r));
+
+    // Assert — evicting the now-absent queue entry is a no-op (no error thrown)
+    expect(() => evictForumCache("forum-settle-1")).not.toThrow();
+    // And a subsequent createComment creates a new webhook (cache was not double-evicted)
+    mockSend.mockResolvedValue({ id: "msg-settle-2" });
+    mockCreateWebhook.mockResolvedValue({ send: mockSend });
+    await createComment({
+      git_id: 11,
+      body: "world",
+      login: "alice",
+      avatar_url: "a",
+      node_id: "gh-settle-1",
+    });
+    expect(mockCreateWebhook).toHaveBeenCalledTimes(2);
   });
 });

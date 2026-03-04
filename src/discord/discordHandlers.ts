@@ -5,6 +5,7 @@ import {
   ForumChannel,
   Message,
   NonThreadGuildBasedChannel,
+  PartialDMChannel,
   PartialMessage,
   ThreadChannel,
 } from "discord.js";
@@ -20,6 +21,7 @@ import {
   openIssue,
   unlockIssue,
 } from "../github/githubActions";
+import { evictForumCache } from "./discordActions";
 import { logger } from "../logger";
 import { store } from "../store";
 import { Thread } from "../interfaces";
@@ -151,4 +153,12 @@ export async function handleThreadDelete(params: AnyThreadChannel) {
   if (!thread) return;
 
   deleteIssue(thread);
+}
+
+export function handleChannelDelete(
+  channel: DMChannel | NonThreadGuildBasedChannel | PartialDMChannel,
+): void {
+  if (channel.id === config.DISCORD_CHANNEL_ID) {
+    evictForumCache(channel.id);
+  }
 }

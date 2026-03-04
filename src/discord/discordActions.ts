@@ -22,13 +22,40 @@ const info = (action: ActionValue, thread: Thread) =>
 // channel. At current scale (single forum channel) this is negligible, but if the bot is
 // ever configured to watch many forums the cache should be bounded or evicted on channel
 // deletion.
-//
-// Known limitation: webhook.edit({ name, avatar }) is called on every comment to impersonate
-// the commenter. Two concurrent GitHub comment events from different users can race, causing
-// the later edit to overwrite the earlier one before the first message is sent, resulting in
-// the wrong avatar/name on a message. Acceptable at current traffic levels; a per-comment
-// webhook or a queue would eliminate this at higher throughput.
 const webhookCache = new Map<string, Webhook>();
+
+// Per-forum promise queue serialising webhook.edit() + webhook.send() pairs so that
+// concurrent GitHub comment events from different users cannot interleave their
+// rename and send calls, which would cause the wrong avatar/name on a message.
+const webhookQueue = new Map<string, Promise<void>>();
+
+function enqueueWebhookTask(forumId: string, task: () => Promise<void>): Promise<void> {
+  const prev = webhookQueue.get(forumId) ?? Promise.resolve();
+  const next = prev.then(task, task); // advance queue even if previous task errored
+  webhookQueue.set(forumId, next);
+  // Self-evict once this tail settles so the Map doesn't retain stale entries.
+  const cleanup = () => { if (webhookQueue.get(forumId) === next) webhookQueue.delete(forumId); };
+  next.then(cleanup, cleanup);
+  return next;
+}
+
+// Evict both caches for a forum channel that has been deleted.
+// Called by the ChannelDelete event handler in discordHandlers.ts.
+export function evictForumCache(channelId: string): void {
+  webhookCache.delete(channelId);
+  webhookQueue.delete(channelId);
+}
+
+const DISCORD_MAX_CONTENT = 2000;
+const TRUNCATION_SUFFIX = "\n\n*(truncated — see GitHub for full comment)*";
+// Spread iterates Unicode code points, avoiding cuts inside emoji surrogate pairs.
+const TRUNCATION_KEEP = DISCORD_MAX_CONTENT - [...TRUNCATION_SUFFIX].length;
+
+export function truncateContent(text: string): string {
+  const codePoints = [...text];
+  if (codePoints.length <= DISCORD_MAX_CONTENT) return text;
+  return codePoints.slice(0, TRUNCATION_KEEP).join("") + TRUNCATION_SUFFIX;
+}
 
 export async function createThread({
   body,
@@ -51,7 +78,7 @@ export async function createThread({
   try {
     const { id } = await forum.threads.create({
       message: {
-        content: body + "/" + login, // TODO
+        content: truncateContent(`**${login}** (GitHub)\n\n${body}`),
       },
       name: title,
       appliedTags,
@@ -115,39 +142,41 @@ export async function createComment({
   const embeds = imageUrls.map((url) => ({ image: { url } }));
   const cleanBody = stripImageMarkdown(body);
 
-  try {
-    let webhook = webhookCache.get(channel.parentId);
-    if (!webhook) {
-      webhook = await (channel.parent as ForumChannel).createWebhook({
-        name: login,
-        avatar: avatar_url,
-      });
-      webhookCache.set(channel.parentId, webhook);
-    } else {
-      await webhook.edit({ name: login, avatar: avatar_url });
+  await enqueueWebhookTask(channel.parentId, async () => {
+    try {
+      let webhook = webhookCache.get(channel.parentId!);
+      if (!webhook) {
+        webhook = await (channel.parent as ForumChannel).createWebhook({
+          name: login,
+          avatar: avatar_url,
+        });
+        webhookCache.set(channel.parentId!, webhook);
+      } else {
+        await webhook.edit({ name: login, avatar: avatar_url });
+      }
+
+      const messagePayload = MessagePayload.create(webhook, {
+        content: truncateContent(cleanBody) || "\u200b",
+        embeds,
+        threadId: thread.id,
+      }).resolveBody();
+
+      const { id } = await webhook.send(messagePayload);
+      thread.comments.push({ id, git_id });
+      saveCommentMapping(git_id, id, thread.node_id!);
+      info(Actions.Commented, thread);
+
+      // Discord auto-unarchives threads when a message is posted.
+      // Re-archive if the thread was already closed to prevent the
+      // ThreadUpdate event from being misread as a user reopen.
+      if (thread.archived) {
+        thread.lockArchiving = true;
+        channel.setArchived(true);
+      }
+    } catch (err) {
+      logger.error(`createComment failed: ${err instanceof Error ? err.stack : err}`);
     }
-
-    const messagePayload = MessagePayload.create(webhook, {
-      content: cleanBody || "\u200b",
-      embeds,
-      threadId: thread.id,
-    }).resolveBody();
-
-    const { id } = await webhook.send(messagePayload);
-    thread.comments.push({ id, git_id });
-    saveCommentMapping(git_id, id, thread.node_id!);
-    info(Actions.Commented, thread);
-
-    // Discord auto-unarchives threads when a message is posted.
-    // Re-archive if the thread was already closed to prevent the
-    // ThreadUpdate event from being misread as a user reopen.
-    if (thread.archived) {
-      thread.lockArchiving = true;
-      channel.setArchived(true);
-    }
-  } catch (err) {
-    logger.error(`createComment failed: ${err instanceof Error ? err.stack : err}`);
-  }
+  });
 }
 
 export async function updateComment({
@@ -191,7 +220,7 @@ export async function updateComment({
     const embeds = imageUrls.map((url) => ({ image: { url } }));
     const cleanBody = stripImageMarkdown(body);
     await webhook.editMessage(discord_id, {
-      content: cleanBody || "\u200b",
+      content: truncateContent(cleanBody) || "\u200b",
       embeds,
       threadId: thread.id,
     });

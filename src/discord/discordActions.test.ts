@@ -385,7 +385,10 @@ describe("createComment", () => {
     const mockCreateWebhook = vi.fn().mockResolvedValue({ send: mockSend });
     const mockChannel = {
       parentId: "forum-create-1",
-      parent: { createWebhook: mockCreateWebhook },
+      parent: {
+        fetchWebhooks: vi.fn().mockResolvedValue({ find: () => undefined, first: () => undefined }),
+        createWebhook: mockCreateWebhook,
+      },
     };
 
     const { store } = await import("../store");
@@ -422,13 +425,67 @@ describe("createComment", () => {
     expect(saveCommentMapping).toHaveBeenCalledWith(42, "discord-msg-777", "gh-node-create-1");
   });
 
+  it("reuses an existing webhook on cold cache instead of creating a new one", async () => {
+    // Arrange — fetchWebhooks returns an existing bot webhook
+    const mockSend = vi.fn().mockResolvedValue({ id: "discord-msg-reuse" });
+    const mockEdit = vi.fn().mockResolvedValue(undefined);
+    const existingWebhook = { send: mockSend, edit: mockEdit, applicationId: "bot-app-id" };
+    const mockCreateWebhook = vi.fn();
+    const mockChannel = {
+      parentId: "forum-reuse-1",
+      parent: {
+        fetchWebhooks: vi.fn().mockResolvedValue({
+          find: vi.fn().mockReturnValue(existingWebhook),
+          first: vi.fn().mockReturnValue(existingWebhook),
+        }),
+        createWebhook: mockCreateWebhook,
+      },
+    };
+
+    const { store } = await import("../store");
+    const discordModule = await import("./discord");
+
+    store.threads = [
+      {
+        id: "thread-reuse-1",
+        title: "Reuse test",
+        appliedTags: [],
+        node_id: "gh-node-reuse-1",
+        comments: [],
+        archived: false,
+        locked: false,
+      },
+    ];
+    (discordModule.default.channels.cache as Map<string, unknown>).set(
+      "thread-reuse-1",
+      mockChannel,
+    );
+
+    // Act
+    await createComment({
+      git_id: 55,
+      body: "Hello",
+      login: "octocat",
+      avatar_url: "https://github.com/octocat.png",
+      node_id: "gh-node-reuse-1",
+    });
+
+    // Assert — existing webhook was reused; no new webhook was created
+    expect(mockCreateWebhook).not.toHaveBeenCalled();
+    expect(mockEdit).toHaveBeenCalledWith({ name: "octocat", avatar: "https://github.com/octocat.png" });
+    expect(mockSend).toHaveBeenCalled();
+  });
+
   it("truncates body exceeding 2000 characters before sending", async () => {
     // Arrange
     const mockSend = vi.fn().mockResolvedValue({ id: "discord-msg-trunc-1" });
     const mockCreateWebhook = vi.fn().mockResolvedValue({ send: mockSend });
     const mockChannel = {
       parentId: "forum-trunc-1",
-      parent: { createWebhook: mockCreateWebhook },
+      parent: {
+        fetchWebhooks: vi.fn().mockResolvedValue({ find: () => undefined, first: () => undefined }),
+        createWebhook: mockCreateWebhook,
+      },
     };
 
     const { store } = await import("../store");
@@ -501,7 +558,10 @@ describe("createComment", () => {
     const mockCreateWebhook = vi.fn().mockResolvedValue(mockWebhook);
     const mockChannel = {
       parentId: "forum-race-1",
-      parent: { createWebhook: mockCreateWebhook },
+      parent: {
+        fetchWebhooks: vi.fn().mockResolvedValue({ find: () => undefined, first: () => undefined }),
+        createWebhook: mockCreateWebhook,
+      },
     };
 
     const { store } = await import("../store");
@@ -627,7 +687,10 @@ describe("updateComment", () => {
     const mockCreateWebhook = vi.fn().mockResolvedValue(mockWebhook);
     const mockChannel = {
       parentId: "forum-warm-1",
-      parent: { createWebhook: mockCreateWebhook },
+      parent: {
+        fetchWebhooks: vi.fn().mockResolvedValue({ find: () => undefined, first: () => undefined }),
+        createWebhook: mockCreateWebhook,
+      },
       // fetchWebhooks is placed on the channel object (not channel.parent) intentionally —
       // it acts as a sentinel to confirm the warm-cache path never reaches the fallback
       // fetch logic, which calls channel.parent.fetchWebhooks(). Placing it here means
@@ -780,7 +843,10 @@ describe("evictForumCache", () => {
     const mockCreateWebhook = vi.fn().mockResolvedValue({ send: mockSend });
     const mockChannel = {
       parentId: "forum-evict-1",
-      parent: { createWebhook: mockCreateWebhook },
+      parent: {
+        fetchWebhooks: vi.fn().mockResolvedValue({ find: () => undefined, first: () => undefined }),
+        createWebhook: mockCreateWebhook,
+      },
     };
 
     const { store } = await import("../store");
@@ -836,7 +902,10 @@ describe("evictForumCache", () => {
     const mockCreateWebhook = vi.fn().mockResolvedValue({ send: mockSend });
     const mockChannel = {
       parentId: "forum-settle-1",
-      parent: { createWebhook: mockCreateWebhook },
+      parent: {
+        fetchWebhooks: vi.fn().mockResolvedValue({ find: () => undefined, first: () => undefined }),
+        createWebhook: mockCreateWebhook,
+      },
     };
 
     const { store } = await import("../store");

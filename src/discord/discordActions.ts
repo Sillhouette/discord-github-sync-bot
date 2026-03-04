@@ -146,10 +146,21 @@ export async function createComment({
     try {
       let webhook = webhookCache.get(channel.parentId!);
       if (!webhook) {
-        webhook = await (channel.parent as ForumChannel).createWebhook({
-          name: login,
-          avatar: avatar_url,
-        });
+        // Cold cache — prefer reusing an existing bot webhook over creating a new one
+        // to avoid accumulating orphaned webhooks on bot restart (Discord limit: 10/channel).
+        const hooks = await (channel.parent as ForumChannel).fetchWebhooks();
+        const found =
+          (client.user?.id ? hooks.find((h) => h.applicationId === client.user!.id) : undefined) ??
+          hooks.first();
+        if (found) {
+          webhook = found;
+          await webhook.edit({ name: login, avatar: avatar_url });
+        } else {
+          webhook = await (channel.parent as ForumChannel).createWebhook({
+            name: login,
+            avatar: avatar_url,
+          });
+        }
         webhookCache.set(channel.parentId!, webhook);
       } else {
         await webhook.edit({ name: login, avatar: avatar_url });
@@ -171,7 +182,7 @@ export async function createComment({
       // ThreadUpdate event from being misread as a user reopen.
       if (thread.archived) {
         thread.lockArchiving = true;
-        channel.setArchived(true);
+        await channel.setArchived(true);
       }
     } catch (err) {
       logger.error(`createComment failed: ${err instanceof Error ? err.stack : err}`);
@@ -237,7 +248,7 @@ export async function archiveThread(node_id: string | undefined) {
   info(Actions.Closed, thread);
 
   thread.archived = true;
-  channel.setArchived(true);
+  await channel.setArchived(true);
 }
 
 export async function unarchiveThread(node_id: string | undefined) {
@@ -247,7 +258,7 @@ export async function unarchiveThread(node_id: string | undefined) {
   info(Actions.Reopened, thread);
 
   thread.archived = false;
-  channel.setArchived(false);
+  await channel.setArchived(false);
 }
 
 export async function lockThread(node_id: string | undefined) {
@@ -260,11 +271,11 @@ export async function lockThread(node_id: string | undefined) {
   if (channel.archived) {
     thread.lockArchiving = true;
     thread.lockLocking = true;
-    channel.setArchived(false);
-    channel.setLocked(true);
-    channel.setArchived(true);
+    await channel.setArchived(false);
+    await channel.setLocked(true);
+    await channel.setArchived(true);
   } else {
-    channel.setLocked(true);
+    await channel.setLocked(true);
   }
 }
 
@@ -278,11 +289,11 @@ export async function unlockThread(node_id: string | undefined) {
   if (channel.archived) {
     thread.lockArchiving = true;
     thread.lockLocking = true;
-    channel.setArchived(false);
-    channel.setLocked(false);
-    channel.setArchived(true);
+    await channel.setArchived(false);
+    await channel.setLocked(false);
+    await channel.setArchived(true);
   } else {
-    channel.setLocked(false);
+    await channel.setLocked(false);
   }
 }
 
@@ -293,7 +304,7 @@ export async function deleteThread(node_id: string | undefined) {
   info(Actions.Deleted, thread);
 
   store.deleteThread(thread?.id);
-  channel.delete();
+  await channel.delete();
 }
 
 export async function getThreadChannel(node_id: string | undefined): Promise<{
@@ -310,8 +321,8 @@ export async function getThreadChannel(node_id: string | undefined): Promise<{
   if (channel) return { thread, channel };
 
   try {
-    const fetchChanel = await client.channels.fetch(thread.id);
-    channel = <ThreadChannel | undefined>fetchChanel;
+    const fetchedChannel = await client.channels.fetch(thread.id);
+    channel = <ThreadChannel | undefined>fetchedChannel;
   } catch (err) {
     logger.warn(`getThreadChannel: failed to fetch channel ${thread.id}: ${err instanceof Error ? err.stack : err}`);
   }

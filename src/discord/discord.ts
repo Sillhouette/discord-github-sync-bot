@@ -21,7 +21,8 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.DirectMessages,
+    // DirectMessages intent removed — bot only operates on guild forum channels
+    // and does not need to receive DMs. Removing reduces the bot's privilege surface.
   ],
   ws: {
     buildStrategy: (manager) => {

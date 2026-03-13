@@ -13,6 +13,18 @@ import {
   logger,
 } from "../logger";
 import { store } from "../store";
+import { stripImageMarkdown } from "../discord/discordActions";
+
+/**
+ * Returns the shortest tilde fence that cannot be broken by the given text.
+ * Per CommonMark spec, a closing fence must be at least as long as the opening
+ * fence — so we find the longest run of tildes (≥3) inside the text and use
+ * one more tilde. Falls back to the minimum of ~~~ when the text is clean.
+ */
+function minFence(text: string): string {
+  const maxRun = (text.match(/~{3,}/g) ?? []).reduce((max, s) => Math.max(max, s.length), 0);
+  return "~".repeat(Math.max(3, maxRun + 1));
+}
 
 export const octokit = new Octokit({
   auth: config.GITHUB_ACCESS_TOKEN,
@@ -21,7 +33,7 @@ export const octokit = new Octokit({
 
 const graphqlWithAuth = graphql.defaults({
   headers: {
-    authorization: `token ${process.env.GITHUB_ACCESS_TOKEN}`,
+    authorization: `token ${config.GITHUB_ACCESS_TOKEN}`,
   },
 });
 
@@ -72,7 +84,8 @@ export async function attachmentsToMarkdown(
             const res = await fetch(url);
             if (res.ok) {
               const text = await res.text();
-              md += `\n**Attached: ${name}**\n\`\`\`\n${text}\n\`\`\`\n`;
+              const fence = minFence(text);
+              md += `\n**Attached: ${name}**\n${fence}\n${text}\n${fence}\n`;
             } else {
               md += `[${name}](${url})`;
             }
@@ -111,9 +124,16 @@ async function getIssueBody(params: Message): Promise<string> {
   const { guildId, channelId, id, content, author, attachments } = params;
   const { globalName, avatar } = author;
 
+  // Strip Markdown image syntax and HTML <img> tags from Discord message content
+  // before embedding in the GitHub issue body. Without this, a Discord user writing
+  // ![x](https://evil.com/pixel.gif) would cause GitHub's renderer to make outbound
+  // requests to attacker-controlled servers. Attachment images are handled separately
+  // via attachmentsToMarkdown, which applies the isImageUrlSafe allow-list.
+  const safeContent = stripImageMarkdown(content);
+
   return (
     `<kbd>[![${globalName}](https://cdn.discordapp.com/avatars/${author.id}/${avatar}.webp?size=40)](https://discord.com/channels/${guildId}/${channelId}/${id})</kbd> [${globalName}](https://discord.com/channels/${guildId}/${channelId}/${id})  \`BOT\`\n\n` +
-    `${content}\n` +
+    `${safeContent}\n` +
     `${await attachmentsToMarkdown(attachments, id)}\n`
   );
 }

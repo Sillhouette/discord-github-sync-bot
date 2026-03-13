@@ -99,6 +99,31 @@ export async function createThread({
   }
 }
 
+// Allow-list of known-safe image hosting domains for Discord embeds.
+// Uses exact-match-or-subdomain to prevent subdomain-spoofing bypasses
+// (e.g. "evil.githubusercontent.com.attacker.com".endsWith("githubusercontent.com") === true).
+const SAFE_IMAGE_HOSTS = [
+  "cdn.discordapp.com",
+  "media.discordapp.net",
+  "githubusercontent.com",
+  "github.com",
+];
+
+/**
+ * Returns true when the URL's hostname exactly matches or is a subdomain of
+ * one of the known-safe image hosts. Returns false for invalid URLs or
+ * untrusted hosts — the URL will be rendered as a plain link, not an embed.
+ */
+export function isImageUrlSafe(url: string): boolean {
+  let hostname: string;
+  try {
+    hostname = new URL(url).hostname;
+  } catch {
+    return false;
+  }
+  return SAFE_IMAGE_HOSTS.some((h) => hostname === h || hostname.endsWith("." + h));
+}
+
 export function extractImageUrls(body: string): string[] {
   const urls: string[] = [];
   // Markdown: ![alt](url) or ![alt](url "title")
@@ -138,7 +163,7 @@ export async function createComment({
   const { thread, channel } = await getThreadChannel(node_id);
   if (!thread || !channel || !channel.parentId || !channel.parent) return;
 
-  const imageUrls = extractImageUrls(body).slice(0, 10);
+  const imageUrls = extractImageUrls(body).filter(isImageUrlSafe).slice(0, 10);
   const embeds = imageUrls.map((url) => ({ image: { url } }));
   const cleanBody = stripImageMarkdown(body);
 
@@ -229,7 +254,13 @@ export async function updateComment({
   }
 
   try {
-    const imageUrls = extractImageUrls(body).slice(0, 10);
+    // updateComment does not use enqueueWebhookTask because it only calls
+    // webhook.editMessage() — it does not rename or re-avatar the webhook.
+    // The queue in createComment exists to serialise webhook.edit() (rename)
+    // with webhook.send() so Discord uses the correct name on the new message.
+    // Since editMessage() doesn't rename, the concurrent-rename race doesn't
+    // apply here and queueing would add latency for no benefit.
+    const imageUrls = extractImageUrls(body).filter(isImageUrlSafe).slice(0, 10);
     const embeds = imageUrls.map((url) => ({ image: { url } }));
     const cleanBody = stripImageMarkdown(body);
     await webhook.editMessage(discord_id, {

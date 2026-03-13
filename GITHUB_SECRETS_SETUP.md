@@ -6,13 +6,14 @@ This document explains how to configure GitHub Secrets for automated Discord bot
 
 ## Required Secrets
 
-The Discord bot deployment requires 3 new GitHub repository secrets to be added:
+The Discord bot deployment requires 4 new GitHub repository secrets to be added:
 
 | Secret Name | Description | How to Obtain |
 |-------------|-------------|---------------|
 | `DISCORD_TOKEN` | Discord bot authentication token | Discord Developer Portal |
 | `DISCORD_CHANNEL_ID` | Discord forum channel ID where bot listens | Discord (Developer Mode) |
 | `DISCORD_GITHUB_PAT` | GitHub Personal Access Token for bot | GitHub Settings |
+| `GITHUB_WEBHOOK_SECRET` | HMAC secret for webhook signature verification | Generate with `openssl rand -hex 32` |
 
 **Existing Secrets (Already Configured):**
 - `DROPLET_HOST` - DigitalOcean Droplet IP address
@@ -82,7 +83,7 @@ The Discord bot deployment requires 3 new GitHub repository secrets to be added:
 
 ### 4. Add Secrets to GitHub Repository
 
-**Where:** https://github.com/raustin/osrs-companion/settings/secrets/actions
+**Where:** https://github.com/Sillhouette/osrs-companion/settings/secrets/actions
 
 **Steps:**
 1. Navigate to repository → Settings → Secrets and variables → Actions
@@ -107,6 +108,23 @@ Name: DISCORD_GITHUB_PAT
 Value: <paste_github_pat>
 ```
 
+**Secret 4: GITHUB_WEBHOOK_SECRET**
+```
+Name: GITHUB_WEBHOOK_SECRET
+Value: <output of: openssl rand -hex 32>
+```
+
+> ⚠️ **Coordinated deploy required:** The same secret must be set in both the
+> bot's `.env` AND the GitHub webhook settings at the same time, or the bot
+> will reject all incoming webhooks until both match.
+>
+> After adding this secret:
+> 1. Go to: https://github.com/{owner}/{repo}/settings/hooks
+> 2. Edit the existing webhook
+> 3. Paste the same secret value into the **Secret** field
+> 4. Save the webhook
+> 5. Redeploy the bot (or restart the container)
+
 4. Click "Add secret" for each
 
 ---
@@ -115,11 +133,12 @@ Value: <paste_github_pat>
 
 After adding secrets, verify they are configured:
 
-1. Go to: https://github.com/raustin/osrs-companion/settings/secrets/actions
-2. Confirm all 5 secrets are listed:
+1. Go to: https://github.com/Sillhouette/osrs-companion/settings/secrets/actions
+2. Confirm all 6 secrets are listed:
    - ✅ DISCORD_TOKEN
    - ✅ DISCORD_CHANNEL_ID
    - ✅ DISCORD_GITHUB_PAT
+   - ✅ GITHUB_WEBHOOK_SECRET
    - ✅ DROPLET_HOST (existing)
    - ✅ DROPLET_SSH_KEY (existing)
 
@@ -154,7 +173,7 @@ Once secrets are configured, the bot deploys automatically:
 10. Report deployment status
 
 **View Workflow:**
-- https://github.com/raustin/osrs-companion/actions/workflows/ci.yml
+- https://github.com/Sillhouette/osrs-companion/actions/workflows/ci.yml
 
 ---
 
@@ -164,7 +183,7 @@ If CI/CD fails or you need to deploy manually:
 
 ```bash
 # SSH into Droplet
-ssh -i ~/.ssh/osrs-companion root@134.209.169.66
+ssh -i ~/.ssh/osrs-companion root@<DROPLET_IP>
 
 # Navigate to bot directory
 cd /opt/osrs-companion/discord-bot
@@ -189,7 +208,7 @@ git pull origin main
 
 **Or manually restart:**
 ```bash
-ssh -i ~/.ssh/osrs-companion root@134.209.169.66
+ssh -i ~/.ssh/osrs-companion root@<DROPLET_IP>
 cd /opt/osrs-companion/discord-bot
 docker restart osrs-discord-bot
 ```
@@ -217,7 +236,7 @@ docker restart osrs-discord-bot
    ```
 
 2. Watch GitHub Actions:
-   - Go to: https://github.com/raustin/osrs-companion/actions
+   - Go to: https://github.com/Sillhouette/osrs-companion/actions
    - Should see "CI" workflow running
    - Click on workflow to view logs
 
@@ -240,7 +259,7 @@ docker restart osrs-discord-bot
 ### Deployment Failed in GitHub Actions
 
 **Check:**
-1. GitHub Actions logs: https://github.com/raustin/osrs-companion/actions
+1. GitHub Actions logs: https://github.com/Sillhouette/osrs-companion/actions
 2. Look for error message in "Deploy to Droplet" step
 3. Common issues:
    - Missing secret (check all 5 secrets configured)
@@ -312,10 +331,10 @@ docker restart osrs-discord-bot
 ## Quick Reference
 
 ### GitHub Secrets Location
-https://github.com/raustin/osrs-companion/settings/secrets/actions
+https://github.com/Sillhouette/osrs-companion/settings/secrets/actions
 
 ### GitHub Actions Workflows
-https://github.com/raustin/osrs-companion/actions/workflows/ci.yml
+https://github.com/Sillhouette/osrs-companion/actions/workflows/ci.yml
 
 ### Discord Developer Portal
 https://discord.com/developers/applications
@@ -325,7 +344,7 @@ https://github.com/settings/tokens?type=beta
 
 ### Droplet SSH Command
 ```bash
-ssh -i ~/.ssh/osrs-companion root@134.209.169.66
+ssh -i ~/.ssh/osrs-companion root@<DROPLET_IP>
 ```
 
 ### Bot Logs Command

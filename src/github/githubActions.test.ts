@@ -227,6 +227,67 @@ describe('GitHub Actions', () => {
   });
 
   describe('createIssue', () => {
+    it('strips Markdown image syntax from Discord message content before posting to GitHub', async () => {
+      // Arrange — Discord user embeds an image URL in their message body.
+      // Without filtering, GitHub renders it and makes an outbound request to the URL.
+      const thread: Thread = {
+        id: 'thread-1',
+        title: 'Test Issue',
+        appliedTags: [],
+        comments: [],
+        archived: false,
+        locked: false,
+      };
+      mockOctokit.rest.issues.create.mockResolvedValueOnce({ data: { number: 1, node_id: 'node-1' } });
+      const mockMessage = {
+        guildId: '123',
+        channelId: 'thread-1',
+        id: 'msg-1',
+        content: 'Here is a tracking pixel: ![tracker](https://evil.com/pixel.gif) and a normal message.',
+        author: { bot: false, id: 'user-1', globalName: 'TestUser', avatar: 'avatar-hash' },
+        attachments: new Collection(),
+      } as unknown as Message;
+
+      // Act
+      await createIssue(thread, mockMessage);
+
+      // Assert — the GitHub issue body must not contain the unsafe image URL
+      const callArgs = mockOctokit.rest.issues.create.mock.calls[0][0];
+      expect(callArgs.body).not.toContain('https://evil.com/pixel.gif');
+      expect(callArgs.body).not.toContain('![tracker]');
+      expect(callArgs.body).toContain('Here is a tracking pixel:');
+    });
+
+    it('strips HTML img tags from Discord message content before posting to GitHub', async () => {
+      // Arrange
+      const thread: Thread = {
+        id: 'thread-2',
+        title: 'Test Issue 2',
+        appliedTags: [],
+        comments: [],
+        archived: false,
+        locked: false,
+      };
+      mockOctokit.rest.issues.create.mockResolvedValueOnce({ data: { number: 2, node_id: 'node-2' } });
+      const mockMessage = {
+        guildId: '123',
+        channelId: 'thread-2',
+        id: 'msg-2',
+        content: 'Bug report <img src="https://attacker.com/spy.png"/> details here.',
+        author: { bot: false, id: 'user-1', globalName: 'TestUser', avatar: 'avatar-hash' },
+        attachments: new Collection(),
+      } as unknown as Message;
+
+      // Act
+      await createIssue(thread, mockMessage);
+
+      // Assert
+      const callArgs = mockOctokit.rest.issues.create.mock.calls[0][0];
+      expect(callArgs.body).not.toContain('https://attacker.com/spy.png');
+      expect(callArgs.body).not.toContain('<img');
+      expect(callArgs.body).toContain('Bug report');
+    });
+
     it('should handle thread that already has an issue number', async () => {
       // Arrange
       const thread: Thread = {

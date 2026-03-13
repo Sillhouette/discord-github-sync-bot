@@ -146,9 +146,10 @@ describe("attachmentsToMarkdown", () => {
     // Act
     const result = await attachmentsToMarkdown(attachments, "msg1");
 
-    // Assert
+    // Assert — tilde fencing (~~~) is used so that triple-backtick content in
+    // the attachment cannot break the fence (AC-4 security fix).
     expect(result).toContain("**Attached: notes.txt**");
-    expect(result).toContain("```");
+    expect(result).toContain("~~~");
     expect(result).toContain("hello world");
   });
 

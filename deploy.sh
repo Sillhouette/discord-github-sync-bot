@@ -1,20 +1,22 @@
 #!/bin/bash
-# Deployment script for Discord-to-GitHub Issue Bot
-# Run on DigitalOcean Droplet: /opt/osrs-companion/discord-bot/deploy.sh
+# Deployment script for Discord GitHub Sync Bot
 
 set -e
 
-echo "=== Discord-to-GitHub Issue Bot Deployment ==="
+echo "=== Discord GitHub Sync Bot Deployment ==="
 echo ""
 
-# Configuration
-BOT_DIR="/opt/osrs-companion/discord-bot"
+# Configuration — defaults to current directory; override with BOT_DIR env var
+BOT_DIR="${BOT_DIR:-$(pwd)}"
 
 # Colors for output
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
+
+# Container name — override with BOT_CONTAINER env var
+BOT_CONTAINER="${BOT_CONTAINER:-discord-github-sync-bot}"
 
 # Check if running as root or with sudo
 if [[ $EUID -eq 0 ]]; then
@@ -54,15 +56,14 @@ echo "Environment configuration verified ✓"
 
 # Phase 3: Build Docker image
 echo -e "${GREEN}Phase 3: Building Docker image...${NC}"
-echo "Note: Dockerfile will clone holmityd bot repository during build"
-docker build -t osrs-discord-bot:latest .
+docker build -f Dockerfile.standalone -t "${BOT_CONTAINER}:latest" .
 echo "Docker image built ✓"
 
 # Phase 4: Stop existing container (if running)
 echo -e "${GREEN}Phase 4: Stopping existing container...${NC}"
-if docker ps -a | grep -q osrs-discord-bot; then
-    docker stop osrs-discord-bot || true
-    docker rm osrs-discord-bot || true
+if docker ps -a | grep -q "${BOT_CONTAINER}"; then
+    docker stop "${BOT_CONTAINER}" || true
+    docker rm "${BOT_CONTAINER}" || true
     echo "Existing container stopped ✓"
 else
     echo "No existing container found (first deployment)"
@@ -70,7 +71,13 @@ fi
 
 # Phase 5: Start bot container
 echo -e "${GREEN}Phase 5: Starting bot container...${NC}"
-docker compose up -d
+docker run -d \
+  --name "${BOT_CONTAINER}" \
+  --restart unless-stopped \
+  --env-file .env \
+  -p "${PORT}:${PORT}" \
+  -v "${BOT_CONTAINER}-data:/app/data" \
+  "${BOT_CONTAINER}:latest"
 echo "Bot container started ✓"
 
 # Phase 6: Wait for container to be healthy
@@ -80,11 +87,11 @@ sleep 5
 
 RETRIES=0
 MAX_RETRIES=12
-until [ "$(docker inspect -f '{{.State.Health.Status}}' osrs-discord-bot 2>/dev/null)" == "healthy" ]; do
+until [ "$(docker inspect -f '{{.State.Health.Status}}' "${BOT_CONTAINER}" 2>/dev/null)" == "healthy" ]; do
     RETRIES=$((RETRIES + 1))
     if [ $RETRIES -ge $MAX_RETRIES ]; then
         echo -e "${RED}Error: Bot did not become healthy within expected time${NC}"
-        echo "Check logs: docker logs osrs-discord-bot"
+        echo "Check logs: docker logs ${BOT_CONTAINER}"
         exit 1
     fi
     echo "Waiting for health check... ($RETRIES/$MAX_RETRIES)"
@@ -94,12 +101,12 @@ echo "Bot is healthy ✓"
 
 # Phase 7: Verify bot is running
 echo -e "${GREEN}Phase 7: Verifying bot status...${NC}"
-docker ps | grep osrs-discord-bot
+docker ps | grep "${BOT_CONTAINER}"
 echo ""
 
 # Display logs (last 20 lines)
 echo -e "${GREEN}Recent logs:${NC}"
-docker logs osrs-discord-bot --tail 20
+docker logs "${BOT_CONTAINER}" --tail 20
 
 echo ""
 echo -e "${GREEN}=== Deployment Complete ===${NC}"
@@ -107,11 +114,8 @@ echo ""
 echo "Next steps:"
 echo "1. Verify Discord bot is online in your server"
 echo "2. Create a test forum thread to trigger GitHub issue creation"
-echo "3. Configure GitHub webhook: https://github.com/$GITHUB_USERNAME/$GITHUB_REPOSITORY/settings/hooks"
-echo "   - Payload URL: https://api.theoatrix.app/github-webhook"
-echo "   - Content type: application/json"
-echo "   - Events: Issues, Issue comments"
+echo "3. Configure GitHub webhook (see README.md — GitHub Webhook Setup)"
 echo ""
-echo "Monitor logs: docker logs osrs-discord-bot -f"
-echo "Restart bot: docker restart osrs-discord-bot"
-echo "Stop bot: docker stop osrs-discord-bot"
+echo "Monitor logs: docker logs ${BOT_CONTAINER} -f"
+echo "Restart bot: docker restart ${BOT_CONTAINER}"
+echo "Stop bot: docker stop ${BOT_CONTAINER}"

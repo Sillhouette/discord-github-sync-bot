@@ -1,5 +1,5 @@
 #!/bin/bash
-# Prerequisites setup script for Discord-to-GitHub Issue Bot
+# Prerequisites setup script for Discord GitHub Sync Bot
 # Automates GitHub webhook creation and validates configuration
 
 set -e
@@ -11,7 +11,7 @@ RED='\033[0;31m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}=== Discord-to-GitHub Issue Bot - Prerequisites Setup ===${NC}"
+echo -e "${BLUE}=== Discord GitHub Sync Bot - Prerequisites Setup ===${NC}"
 echo ""
 
 # Check if .env file exists
@@ -22,8 +22,8 @@ if [ ! -f ".env" ]; then
     echo "  DISCORD_TOKEN=<your_discord_bot_token>"
     echo "  DISCORD_CHANNEL_ID=<your_forum_channel_id>"
     echo "  GITHUB_ACCESS_TOKEN=<your_github_pat>"
-    echo "  GITHUB_USERNAME=raustin"
-    echo "  GITHUB_REPOSITORY=osrs-companion"
+    echo "  GITHUB_USERNAME=<your_github_username>"
+    echo "  GITHUB_REPOSITORY=<your_github_repository>"
     echo "  PORT=5000"
     echo ""
     echo "See .env.example for template."
@@ -97,8 +97,14 @@ fi
 if [ "$SKIP_WEBHOOK" = false ]; then
     echo -e "${GREEN}Step 4: Creating GitHub webhook...${NC}"
 
-    WEBHOOK_URL="https://api.theoatrix.app/github-webhook"
     REPO="${GITHUB_USERNAME}/${GITHUB_REPOSITORY}"
+
+    # Require a real WEBHOOK_URL — abort rather than create a broken webhook
+    if [[ -z "$WEBHOOK_URL" || "$WEBHOOK_URL" == *"your-domain.example.com"* ]]; then
+        echo -e "${RED}Error: WEBHOOK_URL is not set to a real URL.${NC}"
+        echo "Set WEBHOOK_URL=https://<your-domain>/github-webhook before running this script."
+        exit 1
+    fi
 
     # Check if webhook already exists
     EXISTING_WEBHOOK=$(gh api "repos/${REPO}/hooks" --jq ".[] | select(.config.url == \"${WEBHOOK_URL}\") | .id" 2>/dev/null || echo "")
@@ -122,17 +128,23 @@ if [ "$SKIP_WEBHOOK" = false ]; then
 
     echo "Creating webhook at ${WEBHOOK_URL}..."
 
+    # Build webhook creation args — include secret when set so GitHub signs payloads
+    WEBHOOK_ARGS=(
+        -X POST
+        -f name='web'
+        -f config[url]="${WEBHOOK_URL}"
+        -f config[content_type]='json'
+        -f config[insecure_ssl]='0'
+        -F events[]='issues'
+        -F events[]='issue_comment'
+        -F active=true
+    )
+    if [[ -n "$GITHUB_WEBHOOK_SECRET" ]]; then
+        WEBHOOK_ARGS+=(-f config[secret]="${GITHUB_WEBHOOK_SECRET}")
+    fi
+
     # Create webhook via GitHub API
-    WEBHOOK_ID=$(gh api "repos/${REPO}/hooks" \
-        -X POST \
-        -f name='web' \
-        -f config[url]="${WEBHOOK_URL}" \
-        -f config[content_type]='json' \
-        -f config[insecure_ssl]='0' \
-        -F events[]='issues' \
-        -F events[]='issue_comment' \
-        -F active=true \
-        --jq '.id' 2>&1)
+    WEBHOOK_ID=$(gh api "repos/${REPO}/hooks" "${WEBHOOK_ARGS[@]}" --jq '.id' 2>&1)
 
     if [ $? -eq 0 ] && [ -n "$WEBHOOK_ID" ]; then
         echo -e "${GREEN}✓ Webhook created successfully (ID: $WEBHOOK_ID)${NC}"
@@ -161,7 +173,7 @@ else
     echo "Please create webhook manually:"
     echo "1. Go to: https://github.com/${GITHUB_USERNAME}/${GITHUB_REPOSITORY}/settings/hooks"
     echo "2. Click 'Add webhook'"
-    echo "3. Payload URL: https://api.theoatrix.app/github-webhook"
+    echo "3. Payload URL: https://<your-domain>/github-webhook"
     echo "4. Content type: application/json"
     echo "5. Events: Issues, Issue comments"
     echo "6. Active: Yes"

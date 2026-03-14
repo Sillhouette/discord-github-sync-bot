@@ -1,7 +1,7 @@
 {
-  "name": "gitbot",
+  "name": "discord-github-sync-bot",
   "version": "1.0.0",
-  "description": "",
+  "description": "Bidirectional sync between Discord forum threads and GitHub issues",
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -13,7 +13,7 @@
     "lint": "eslint . --ext ts --fix",
     "forward": "ssh -R 80:localhost:5000 serveo.net"
   },
-  "author": "Nicat",
+  "author": "Austin Melchior (Sillhouette)",
   "license": "MIT",
   "dependencies": {
     "@octokit/graphql": "^7.1.0",

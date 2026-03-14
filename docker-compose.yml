@@ -1,30 +1,23 @@
-version: '3.8'
-
 services:
-  discord-bot:
+  bot:
     build:
-      context: ..
-      dockerfile: discord-bot/Dockerfile
-    container_name: osrs-discord-bot
+      context: .
+      dockerfile: Dockerfile.standalone
+    image: discord-github-sync-bot
+    container_name: discord-github-sync-bot
     restart: unless-stopped
-    env_file:
-      - .env
+    user: botuser
+    env_file: .env
     ports:
-      - "5000:5000"
-    networks:
-      - osrs-network
+      - "${PORT:-5000}:${PORT:-5000}"
     volumes:
       - bot-data:/app/data
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:5000/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:${PORT:-5000}/health"]
       interval: 30s
-      timeout: 10s
-      retries: 3
+      timeout: 5s
       start_period: 40s
-
-networks:
-  osrs-network:
-    driver: bridge
+      retries: 3
 
 volumes:
   bot-data:

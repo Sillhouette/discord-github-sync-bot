@@ -1,444 +1,211 @@
-# Discord-to-GitHub Issue Bot
+# discord-github-sync-bot
 
-Bidirectional sync between Discord forum threads and GitHub issues for partner collaboration without repo access.
-
-**Based on:** [holmityd/GitHub-Issues-Discord-Threads-Bot](https://github.com/holmityd/GitHub-Issues-Discord-Threads-Bot)
-
-**Deployment:** Automated via GitHub Actions CI/CD pipeline
+> Let your Discord community report bugs and request features — without ever touching GitHub.
+>
+> Bidirectional sync between Discord forum threads and GitHub issues.
+> Built for Discord-native communities: gaming, creator tooling, indie projects.
 
 ---
 
-## Deployment Options
+## How it works
 
-### Option 1: Automated CI/CD (Recommended)
+```
+Discord Forum Thread  ←→  Bot (Node.js)  ←→  GitHub Issues
+      ↑                       ↑
+   your community          webhook server
+   (no GitHub needed)       port :5000
+```
 
-**Deploys automatically on push to main** when `discord-bot/` files change.
-
-**Setup:** See [GITHUB_SECRETS_SETUP.md](GITHUB_SECRETS_SETUP.md) for configuring GitHub Secrets.
-
-**Workflow:** `.github/workflows/ci.yml` handles deployment to DigitalOcean Droplet.
-
-**Status:** View at https://github.com/raustin/osrs-companion/actions
-
-### Option 2: Manual Deployment
-
-**Use when:** CI/CD is not configured yet or manual deploy needed.
-
-**Steps:** Follow deployment instructions below.
+Users post in a Discord forum channel. The bot creates a GitHub issue automatically.
+Comments, status changes, and labels sync in both directions — your community never
+needs to visit GitHub.
 
 ---
 
 ## Features
 
-- ✅ **Create GitHub issues** from Discord forum threads
-- ✅ **View GitHub issues** in Discord (bidirectional sync)
-- ✅ **Comment sync** (Discord ↔ GitHub)
-- ✅ **Status sync** (open/closed/reopened)
-- ✅ **Label mapping** (Discord tags → GitHub labels)
-- ✅ **Partner collaboration** (no GitHub repo access needed)
+- Create GitHub issues from Discord forum threads
+- Sync comments bidirectionally (Discord → GitHub, GitHub → Discord)
+- Sync issue status (open / closed / reopened)
+- Map Discord tags to GitHub labels
+- Optional webhook signature verification (recommended for production)
+- Optional R2 image re-hosting (prevents Discord CDN URL expiry in GitHub issues)
 
 ---
 
-## Architecture
+## Quick Start
 
-```
-Discord Forum (#github-issues)
-         ↕ Discord API
-    Discord Bot (Node.js 20)
-    • Forum event listener
-    • Webhook server (:5000)
-         ↕ Octokit API  ↕ Webhooks
-      GitHub Issues
-```
+**Prerequisites:** Docker, a Discord bot token, and a GitHub fine-grained PAT.
 
-**Hosting:** Docker container on DigitalOcean Droplet
+1. **Clone the repo**
 
-**Webhook:** nginx reverse proxy (`/github-webhook` → `:5000`)
+   ```bash
+   git clone https://github.com/{owner}/discord-github-sync-bot.git
+   cd discord-github-sync-bot
+   ```
 
----
+2. **Create your `.env` file**
 
-## Prerequisites
+   ```bash
+   cp .env.example .env
+   # Edit .env and fill in required values (see Configuration below)
+   ```
 
-### 1. Discord Bot Application
+3. **Start the bot**
 
-1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
-2. Click "New Application" → Name: "OSRS Companion Issue Bot"
-3. Bot tab → "Add Bot" → Copy token (save for `.env`)
-4. Enable Privileged Gateway Intents:
-   - ✅ PRESENCE INTENT
-   - ✅ MESSAGE CONTENT INTENT
-5. OAuth2 → URL Generator:
+   ```bash
+   docker build -f Dockerfile.standalone -t discord-github-sync-bot .
+   docker run -d \
+     --name discord-github-sync-bot \
+     --restart unless-stopped \
+     --env-file .env \
+     -v discord-bot-data:/app/data \
+     -p 5000:5000 \
+     discord-github-sync-bot
+   ```
+
+   Or with Docker Compose:
+
+   ```bash
+   docker compose up -d
+   ```
+
+   See `docker-compose.yml` in this directory.
+
+4. **Invite the bot to your Discord server**
+
+   Go to the [Discord Developer Portal](https://discord.com/developers/applications),
+   select your app, then OAuth2 → URL Generator:
    - Scopes: `bot`, `applications.commands`
-   - Bot Permissions:
-     - ✅ Send Messages
-     - ✅ Manage Threads
-     - ✅ Manage Messages
-     - ✅ Read Message History
-6. Copy generated URL → Invite bot to your Discord server
+   - Bot Permissions: Send Messages, Manage Threads, Manage Messages, Read Message History
 
-### 2. Discord Forum Channel
+5. **Add the GitHub webhook**
 
-1. In your Discord server, create a new channel
-2. Channel Type: **Forum** (not Text Channel)
-3. Name: `#github-issues` (or any name you prefer)
-4. Right-click channel → Copy ID (save for `.env`)
-   - **Note:** Enable Developer Mode in User Settings → App Settings → Advanced → Developer Mode
+   See [GitHub Webhook Setup](#github-webhook-setup) below.
 
-### 3. GitHub Fine-Grained Personal Access Token (PAT)
+---
 
-1. Go to [GitHub Settings → Personal Access Tokens](https://github.com/settings/tokens?type=beta)
-2. Click "Generate new token" (Fine-grained token)
-3. Token name: "OSRS Companion Discord Bot"
-4. Expiration: 90 days (set calendar reminder to rotate)
-5. Repository access: **Only select repositories** → `osrs-companion`
-6. Permissions:
-   - Repository permissions → **Issues**: Read and write
-   - Repository permissions → **Metadata**: Read-only (automatic)
-7. Click "Generate token" → Copy token (save for `.env`)
-   - ⚠️ **Important:** Token is shown only once. Store securely.
+## Configuration
 
-### 4. GitHub Webhook
+All configuration is via environment variables. Copy `.env.example` to `.env` and fill in the values.
 
-**Do this AFTER bot is deployed and running:**
+| Variable | Required? | Default | Description |
+|----------|-----------|---------|-------------|
+| `DISCORD_TOKEN` | Required | — | Discord bot token from the Developer Portal |
+| `DISCORD_CHANNEL_ID` | Required | — | ID of the Discord forum channel to sync |
+| `GITHUB_ACCESS_TOKEN` | Required | — | Fine-grained PAT with Issues: Read & Write |
+| `GITHUB_USERNAME` | Required | — | GitHub account or org that owns the repository |
+| `GITHUB_REPOSITORY` | Required | — | Repository name (without owner prefix) |
+| `PORT` | Optional | `5000` | Port the webhook HTTP server listens on |
+| `GITHUB_WEBHOOK_SECRET` | Recommended | — | Shared secret for HMAC webhook signature verification. Without it, the bot logs a warning and accepts all incoming requests. |
+| `R2_BUCKET` | Optional | — | Cloudflare R2 bucket name for image re-hosting |
+| `R2_CDN_BASE_URL` | Optional | — | Public CDN base URL for re-hosted images (e.g. `https://cdn.example.com`) |
+| `CLOUDFLARE_ACCOUNT_ID` | Optional | — | Cloudflare account ID (required with R2 vars) |
+| `CLOUDFLARE_API_TOKEN` | Optional | — | Cloudflare API token (required with R2 vars) |
 
-1. Go to `https://github.com/raustin/osrs-companion/settings/hooks`
-2. Click "Add webhook"
-3. Payload URL: `https://api.theoatrix.app/github-webhook`
-4. Content type: `application/json`
-5. Secret: (leave empty for MVP; can add later)
-6. Events:
-   - ✅ Issues
-   - ✅ Issue comments
-   - ❌ Uncheck "Pushes" (not needed)
-7. Active: ✅ Enabled
-8. Click "Add webhook"
+---
+
+## Optional Features
+
+### Webhook Signature Verification
+
+Without a webhook secret, anyone who discovers your bot's webhook URL can send fake
+GitHub events. This is harmless if the URL is obscure, but easy to prevent.
+
+**Enable:**
+1. Generate a secret: `openssl rand -hex 32`
+2. Set `GITHUB_WEBHOOK_SECRET=<the secret>` in your `.env`
+3. Add the same value to GitHub → your repo → Settings → Webhooks → Secret
+
+**Without it:** The bot logs a startup warning and accepts all requests.
+
+### R2 Image Re-hosting
+
+Discord CDN URLs expire after approximately 7 days. Without re-hosting, images
+attached to Discord posts will break in GitHub issues after that window.
+
+**Enable:** Set all four R2/Cloudflare variables (`R2_BUCKET`, `R2_CDN_BASE_URL`,
+`CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`).
+
+**Without it:** Discord attachment URLs are used as-is — images may expire.
 
 ---
 
 ## Deployment
 
-### Step 1: SSH into DigitalOcean Droplet
+### Docker (recommended)
+
+Build and run from within the `discord-bot/` directory using `Dockerfile.standalone`:
 
 ```bash
-ssh -i ~/.ssh/osrs-companion root@134.209.169.66
-cd /opt/osrs-companion
-```
-
-### Step 2: Clone Bot Repository
-
-```bash
-# Clone holmityd bot repo to discord-bot directory
-git clone https://github.com/holmityd/GitHub-Issues-Discord-Threads-Bot.git discord-bot
-cd discord-bot
-
-# Copy configuration files from this repo
-# (Dockerfile, docker-compose.yml, .env.example are already in discord-bot/ directory)
-```
-
-### Step 3: Create `.env` File
-
-```bash
-cp .env.example .env
-nano .env
-```
-
-Fill in the values:
-
-```bash
-DISCORD_TOKEN=<your_discord_bot_token>
-DISCORD_CHANNEL_ID=<your_forum_channel_id>
-GITHUB_ACCESS_TOKEN=<your_github_pat>
-GITHUB_USERNAME=raustin
-GITHUB_REPOSITORY=osrs-companion
-PORT=5000
-```
-
-Save and exit (`Ctrl+X`, `Y`, `Enter`).
-
-### Step 4: Configure nginx Reverse Proxy
-
-```bash
-# Edit nginx config for api.theoatrix.app
-sudo nano /etc/nginx/sites-available/api.theoatrix.app
-```
-
-Add this location block inside the existing `server` block:
-
-```nginx
-location /github-webhook {
-    proxy_pass http://localhost:5000/;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_set_header X-GitHub-Event $http_x_github_event;
-    proxy_set_header X-GitHub-Delivery $http_x_github_delivery;
-    proxy_set_header X-Hub-Signature-256 $http_x_hub_signature_256;
-    proxy_read_timeout 30s;
-    proxy_connect_timeout 10s;
-    proxy_buffering off;
-    limit_except POST {
-        deny all;
-    }
-}
-```
-
-Test and reload nginx:
-
-```bash
-sudo nginx -t
-sudo systemctl reload nginx
-```
-
-### Step 5: Run Deployment Script
-
-```bash
-chmod +x deploy.sh
-./deploy.sh
-```
-
-The script will:
-
-1. Clone/update bot repository
-2. Verify `.env` configuration
-3. Build Docker image
-4. Stop existing container (if running)
-5. Start new container
-6. Wait for health check
-7. Display logs
-
-### Step 6: Verify Deployment
-
-**Check bot status:**
-
-```bash
-docker ps | grep osrs-discord-bot
+docker build -f Dockerfile.standalone -t discord-github-sync-bot .
+docker run -d \
+  --name discord-github-sync-bot \
+  --restart unless-stopped \
+  --env-file .env \
+  -p 5000:5000 \
+  -v discord-bot-data:/app/data \
+  discord-github-sync-bot
 ```
 
 **View logs:**
-
 ```bash
-docker logs osrs-discord-bot -f
+docker logs discord-github-sync-bot -f
 ```
 
-**Verify Discord bot is online:**
+**Check health:**
+```bash
+docker ps | grep discord-github-sync-bot
+```
 
-- Check your Discord server members list
-- Bot should show as "Online" (green dot)
+### Bare Node
 
-### Step 7: Configure GitHub Webhook
+```bash
+pnpm install
+pnpm build
+node dist/index.js
+```
 
-Follow instructions in Prerequisites section (#4 above).
+Requires Node.js 20+, pnpm, and all env vars set in the environment or a `.env` file.
 
 ---
 
-## Testing
+## GitHub Webhook Setup
 
-### Test 1: Discord → GitHub (Issue Creation)
+Do this **after** the bot is running and reachable from the internet.
 
-1. Go to Discord forum channel `#github-issues`
-2. Create a new post:
-   - Title: "Test issue from Discord"
-   - Message: "This is a test to verify bot functionality."
-3. Bot should auto-create GitHub issue within seconds
-4. Verify issue appears at: `https://github.com/raustin/osrs-companion/issues`
+1. Go to your GitHub repository → Settings → Webhooks → Add webhook
+2. **Payload URL:** `https://<your-domain-or-ip>/github-webhook`
+   - If running locally, use a tunnel tool (e.g. [serveo.net](https://serveo.net): `ssh -R 80:localhost:5000 serveo.net`)
+3. **Content type:** `application/json`
+4. **Secret:** Paste the same value as `GITHUB_WEBHOOK_SECRET` in your `.env` (leave blank if not using)
+5. **Events:** Select "Let me select individual events" and check:
+   - Issues
+   - Issue comments
+6. **Active:** checked
+7. Click "Add webhook"
 
-### Test 2: GitHub → Discord (Comment Sync)
-
-1. Go to the GitHub issue created in Test 1
-2. Add a comment: "Test comment from GitHub"
-3. Check Discord forum thread
-4. Bot should post comment to Discord thread within seconds
-
-### Test 3: GitHub → Discord (Status Sync)
-
-1. Close the GitHub issue (via GitHub web UI)
-2. Check Discord forum thread
-3. Thread should update to show "Closed" status
-
-### Test 4: Discord → GitHub (Comment Sync)
-
-1. Reply to the Discord forum thread
-2. Check GitHub issue
-3. Comment should appear in GitHub issue
+GitHub will send a ping event — the bot will respond with 200.
 
 ---
 
-## Monitoring
-
-### View Logs
+## Development
 
 ```bash
-# Follow logs in real-time
-docker logs osrs-discord-bot -f
-
-# View last 50 lines
-docker logs osrs-discord-bot --tail 50
+pnpm install
+pnpm dev          # Watch mode with tsx
+pnpm test         # Run all tests with vitest
+pnpm test:watch   # Interactive test mode
+pnpm build        # Compile TypeScript to dist/
 ```
 
-### Check Container Health
-
-```bash
-# Container status
-docker ps | grep osrs-discord-bot
-
-# Health status
-docker inspect osrs-discord-bot | grep -A 10 Health
-```
-
-### Check GitHub Webhook Delivery
-
-1. Go to `https://github.com/raustin/osrs-companion/settings/hooks`
-2. Click on webhook (https://api.theoatrix.app/github-webhook)
-3. Scroll to "Recent Deliveries"
-4. Should see 2xx response codes (success)
-5. If 4xx/5xx, check bot logs and nginx config
+Tests live next to the source files they test (`*.test.ts`).
 
 ---
 
-## Maintenance
+## License & Credits
 
-### Restart Bot
+MIT — see [LICENSE](LICENSE).
 
-```bash
-docker restart osrs-discord-bot
-```
-
-### Stop Bot
-
-```bash
-docker stop osrs-discord-bot
-```
-
-### Update Bot (Pull Latest Changes)
-
-```bash
-cd /opt/osrs-companion/discord-bot
-git pull
-docker build -t osrs-discord-bot:latest .
-docker restart osrs-discord-bot
-```
-
-### Rotate Tokens (Every 90 Days)
-
-**GitHub PAT:**
-
-1. Generate new fine-grained PAT (same permissions)
-2. Update `.env` file: `GITHUB_ACCESS_TOKEN=<new_token>`
-3. Restart bot: `docker restart osrs-discord-bot`
-4. Revoke old token via GitHub Settings
-
-**Discord Bot Token:**
-
-1. Discord Developer Portal → Bot → Reset Token
-2. Update `.env` file: `DISCORD_TOKEN=<new_token>`
-3. Restart bot: `docker restart osrs-discord-bot`
-
----
-
-## Troubleshooting
-
-### Bot Not Creating GitHub Issues
-
-**Check:**
-
-1. Bot logs: `docker logs osrs-discord-bot -f`
-2. GitHub PAT permissions (Issues: Read and write)
-3. Discord forum channel ID in `.env` is correct
-4. Bot has permissions in Discord (Send Messages, Manage Threads)
-
-**Solution:**
-
-- Verify `.env` configuration
-- Restart bot: `docker restart osrs-discord-bot`
-- Check logs for specific error messages
-
-### GitHub Webhook Not Delivering
-
-**Check:**
-
-1. nginx config for `/github-webhook` location block
-2. nginx status: `sudo systemctl status nginx`
-3. GitHub webhook Recent Deliveries (response codes)
-4. Bot container is running and healthy
-
-**Solution:**
-
-- Test webhook endpoint: `curl -X POST https://api.theoatrix.app/github-webhook`
-- Reload nginx: `sudo systemctl reload nginx`
-- Check bot logs for webhook receive messages
-
-### Bot Container Keeps Restarting
-
-**Check:**
-
-1. Container logs: `docker logs osrs-discord-bot --tail 100`
-2. Health check status: `docker inspect osrs-discord-bot | grep -A 10 Health`
-3. `.env` file has all required variables
-
-**Solution:**
-
-- Fix errors shown in logs
-- Verify Discord token and GitHub PAT are valid
-- Ensure port 5000 is not already in use
-
-### Discord Forum Channel Requirement
-
-**Error:** Bot doesn't work with text channels
-
-**Solution:**
-
-- This bot requires Discord **forum channels** (not text channels)
-- If your server doesn't support forums, check server boost level
-- Alternative: Use different bot that supports text channels (not recommended)
-
----
-
-## Security Notes
-
-### Current Posture (MVP-Acceptable)
-
-- ✅ Fine-grained PAT (repo-scoped, issues only)
-- ✅ Discord token in `.env` (not committed to Git)
-- ✅ nginx reverse proxy with TLS (Cloudflare SSL)
-- ✅ Docker container isolation
-- ⚠️ No webhook signature validation (acceptable for MVP)
-
-### Post-MVP Hardening (Future)
-
-1. **Webhook Signature Validation**
-   - Add GitHub webhook secret
-   - Verify HMAC signature in bot code
-   - Prevents unauthorized webhook requests
-
-2. **Rate Limiting**
-   - Add express-rate-limit to webhook endpoint
-   - Prevents abuse if URL leaks
-
-3. **Token Rotation**
-   - Set calendar reminder for 90-day rotation
-   - Document rotation procedure in ops runbook
-
----
-
-## Support
-
-**Documentation:**
-
-- Original bot: https://github.com/holmityd/GitHub-Issues-Discord-Threads-Bot
-- Discord.js: https://discord.js.org/
-- Octokit: https://octokit.github.io/rest.js/
-
-**Logs:**
-
-```bash
-docker logs osrs-discord-bot -f
-```
-
-**Configuration:**
-
-- Backlog item: `docs/backlog/tooling/P2-discord-github-issue-bot.md`
-- Discovery: `docs/analysis/20260201_discover_discord-github-integration.md`
-
-**Force Redeploy**
-...
+Originally based on [holmityd/GitHub-Issues-Discord-Threads-Bot](https://github.com/holmityd/GitHub-Issues-Discord-Threads-Bot) by Nicat (holmityd).
+Forked, extended, and maintained by Austin Melchior (Sillhouette).

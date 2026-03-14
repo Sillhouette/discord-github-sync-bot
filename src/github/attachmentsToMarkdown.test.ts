@@ -47,7 +47,7 @@ describe("attachmentsToMarkdown", () => {
   it("should rehost image via R2 and use the stable CDN URL", async () => {
     // Arrange
     const discordUrl = "https://cdn.discordapp.com/attachments/img.png?ex=abc";
-    const cdnUrl = "https://cdn.theoatrix.app/bot-uploads/discord/msg1/img.png";
+    const cdnUrl = "https://cdn.example.com/bot-uploads/discord/msg1/img.png";
     vi.mocked(fetch).mockResolvedValueOnce({
       ok: true,
       arrayBuffer: async () => new ArrayBuffer(100),
@@ -156,7 +156,7 @@ describe("attachmentsToMarkdown", () => {
   it("should rehost large text files (over 4KB) to R2 and use stable CDN URL", async () => {
     // Arrange
     const discordUrl = "https://cdn.discordapp.com/attachments/big.txt";
-    const cdnUrl = "https://cdn.theoatrix.app/bot-uploads/discord/msg1/big.txt";
+    const cdnUrl = "https://cdn.example.com/bot-uploads/discord/msg1/big.txt";
     vi.mocked(fetch).mockResolvedValueOnce({
       ok: true,
       arrayBuffer: async () => new ArrayBuffer(8192),
@@ -228,7 +228,7 @@ describe("attachmentsToMarkdown", () => {
   it("should rehost binary files to R2 and use stable CDN URL", async () => {
     // Arrange
     const discordUrl = "https://cdn.discordapp.com/attachments/archive.zip";
-    const cdnUrl = "https://cdn.theoatrix.app/bot-uploads/discord/msg1/archive.zip";
+    const cdnUrl = "https://cdn.example.com/bot-uploads/discord/msg1/archive.zip";
     vi.mocked(fetch).mockResolvedValueOnce({
       ok: true,
       arrayBuffer: async () => new ArrayBuffer(65536),
@@ -284,7 +284,7 @@ describe("attachmentsToMarkdown", () => {
   it("should rehost gif images via R2 and use stable CDN URL", async () => {
     // Arrange
     const discordUrl = "https://cdn.discordapp.com/attachments/anim.gif";
-    const cdnUrl = "https://cdn.theoatrix.app/bot-uploads/discord/msg1/anim.gif";
+    const cdnUrl = "https://cdn.example.com/bot-uploads/discord/msg1/anim.gif";
     vi.mocked(fetch).mockResolvedValueOnce({
       ok: true,
       arrayBuffer: async () => new ArrayBuffer(200),
@@ -310,7 +310,7 @@ describe("attachmentsToMarkdown", () => {
   it("should rehost webp images via R2 and use stable CDN URL", async () => {
     // Arrange
     const discordUrl = "https://cdn.discordapp.com/attachments/photo.webp";
-    const cdnUrl = "https://cdn.theoatrix.app/bot-uploads/discord/msg1/photo.webp";
+    const cdnUrl = "https://cdn.example.com/bot-uploads/discord/msg1/photo.webp";
     vi.mocked(fetch).mockResolvedValueOnce({
       ok: true,
       arrayBuffer: async () => new ArrayBuffer(300),
@@ -335,7 +335,7 @@ describe("attachmentsToMarkdown", () => {
 
   it("should handle mixed image and text attachments", async () => {
     // Arrange
-    const imgCdnUrl = "https://cdn.theoatrix.app/bot-uploads/discord/msg1/img.png";
+    const imgCdnUrl = "https://cdn.example.com/bot-uploads/discord/msg1/img.png";
     vi.mocked(fetch)
       .mockResolvedValueOnce({
         ok: true,

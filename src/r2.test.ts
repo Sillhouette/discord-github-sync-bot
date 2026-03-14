@@ -5,6 +5,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const { mockFetch } = vi.hoisted(() => {
   process.env.CLOUDFLARE_ACCOUNT_ID = "test-account";
   process.env.CLOUDFLARE_API_TOKEN = "test-token";
+  process.env.R2_BUCKET = "test-bucket";
+  process.env.R2_CDN_BASE_URL = "https://cdn.example.com";
   const mockFetch = vi.fn();
   vi.stubGlobal("fetch", mockFetch);
   return { mockFetch };
@@ -25,10 +27,10 @@ describe("uploadToR2", () => {
     // Act
     const result = await uploadToR2("bot-uploads/discord/msg1/img.png", buffer, "image/png");
 
-    // Assert
-    expect(result).toBe("https://cdn.theoatrix.app/bot-uploads/discord/msg1/img.png");
+    // Assert — CDN URL uses R2_CDN_BASE_URL env var, bucket from R2_BUCKET env var
+    expect(result).toBe("https://cdn.example.com/bot-uploads/discord/msg1/img.png");
     expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining("/r2/buckets/osrs-content/objects/"),
+      expect.stringContaining("/r2/buckets/test-bucket/objects/"),
       expect.objectContaining({
         method: "PUT",
         headers: expect.objectContaining({
@@ -47,16 +49,51 @@ describe("uploadToR2", () => {
     delete process.env.CLOUDFLARE_ACCOUNT_ID;
     delete process.env.CLOUDFLARE_API_TOKEN;
 
-    // Act — getCredentials() reads env at call time, so no module reset needed
-    const result = await uploadToR2("some/key", Buffer.from("x"), "text/plain");
+    try {
+      // Act — getCredentials() reads env at call time, so no module reset needed
+      const result = await uploadToR2("some/key", Buffer.from("x"), "text/plain");
 
-    // Assert
-    expect(result).toBeNull();
-    expect(mockFetch).not.toHaveBeenCalled();
+      // Assert
+      expect(result).toBeNull();
+      expect(mockFetch).not.toHaveBeenCalled();
+    } finally {
+      process.env.CLOUDFLARE_ACCOUNT_ID = savedAccount;
+      process.env.CLOUDFLARE_API_TOKEN = savedToken;
+    }
+  });
 
-    // Restore
-    process.env.CLOUDFLARE_ACCOUNT_ID = savedAccount;
-    process.env.CLOUDFLARE_API_TOKEN = savedToken;
+  it("should return null when R2_BUCKET is not configured", async () => {
+    // Arrange
+    const savedBucket = process.env.R2_BUCKET;
+    delete process.env.R2_BUCKET;
+
+    try {
+      // Act
+      const result = await uploadToR2("some/key", Buffer.from("x"), "text/plain");
+
+      // Assert — missing bucket = cannot upload, degrade gracefully
+      expect(result).toBeNull();
+      expect(mockFetch).not.toHaveBeenCalled();
+    } finally {
+      process.env.R2_BUCKET = savedBucket;
+    }
+  });
+
+  it("should return null when R2_CDN_BASE_URL is not configured", async () => {
+    // Arrange
+    const savedCdnUrl = process.env.R2_CDN_BASE_URL;
+    delete process.env.R2_CDN_BASE_URL;
+
+    try {
+      // Act
+      const result = await uploadToR2("some/key", Buffer.from("x"), "text/plain");
+
+      // Assert — missing CDN URL = cannot build return URL, degrade gracefully
+      expect(result).toBeNull();
+      expect(mockFetch).not.toHaveBeenCalled();
+    } finally {
+      process.env.R2_CDN_BASE_URL = savedCdnUrl;
+    }
   });
 
   it("should encode each path segment individually, preserving slashes", async () => {
@@ -69,7 +106,7 @@ describe("uploadToR2", () => {
 
     // Assert — slashes preserved, space encoded to %20 in both API URL and CDN URL
     const expectedEncoded = "bot-uploads/discord/msg1/My%20Screenshot.png";
-    expect(result).toBe(`https://cdn.theoatrix.app/${expectedEncoded}`);
+    expect(result).toBe(`https://cdn.example.com/${expectedEncoded}`);
     expect(mockFetch).toHaveBeenCalledWith(
       expect.stringContaining(`/objects/${expectedEncoded}`),
       expect.anything(),

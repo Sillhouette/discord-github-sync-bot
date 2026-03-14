@@ -1,5 +1,5 @@
 # Multi-stage build for Discord-to-GitHub Issue Bot
-# Vendored from holmityd/GitHub-Issues-Discord-Threads-Bot with local patches
+# Based on https://github.com/holmityd/GitHub-Issues-Discord-Threads-Bot with local patches
 #
 # Build context: repo root (docker-compose.yml uses context: ..)
 # This lets us copy the root pnpm-lock.yaml for reproducible installs.
@@ -20,8 +20,8 @@ COPY discord-bot/src ./discord-bot/src
 # Install discord-bot dependencies using the root lockfile
 # --ignore-scripts skips the root prepare script (lefthook install) which
 # requires git — not present in Alpine and not needed in a Docker build.
-# Package name is "gitbot" (discord-bot/package.json "name" field)
-RUN pnpm install --frozen-lockfile --ignore-scripts --filter gitbot
+# Package name is "discord-github-sync-bot" (discord-bot/package.json "name" field)
+RUN pnpm install --frozen-lockfile --ignore-scripts --filter discord-github-sync-bot
 
 # Build TypeScript
 RUN cd discord-bot && pnpm run build
@@ -44,7 +44,7 @@ COPY --from=builder /app/discord-bot/package.json ./discord-bot/
 
 # Install production dependencies only using pinned lockfile
 # --ignore-scripts: same rationale as builder stage (no git in Alpine)
-RUN pnpm install --frozen-lockfile --prod --ignore-scripts --filter gitbot
+RUN pnpm install --frozen-lockfile --prod --ignore-scripts --filter discord-github-sync-bot
 
 # Copy built artifacts from builder
 COPY --from=builder /app/discord-bot/dist ./discord-bot/dist

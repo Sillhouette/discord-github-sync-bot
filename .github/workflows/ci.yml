@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 8
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+          cache-dependency-path: pnpm-lock.yaml
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+
+  deploy:
+    needs: test
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to Monitoring Droplet
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.MONITORING_DROPLET_HOST }}
+          username: root
+          key: ${{ secrets.MONITORING_DROPLET_SSH_KEY }}
+          envs: DISCORD_TOKEN,DISCORD_CHANNEL_ID,GITHUB_ACCESS_TOKEN,GITHUB_WEBHOOK_SECRET,CLOUDFLARE_API_TOKEN,CLOUDFLARE_ACCOUNT_ID
+          script: |
+            # Clone repo on first deploy, pull on subsequent deploys
+            if [ ! -d /opt/discord-github-sync-bot ]; then
+              git clone https://github.com/Sillhouette/discord-github-sync-bot.git /opt/discord-github-sync-bot
+            fi
+
+            cd /opt/discord-github-sync-bot
+            git fetch origin
+            git reset --hard origin/main
+
+            # Write .env from secrets
+            printf 'DISCORD_TOKEN=%s\nDISCORD_CHANNEL_ID=%s\nGITHUB_ACCESS_TOKEN=%s\nGITHUB_USERNAME=Sillhouette\nGITHUB_REPOSITORY=osrs-companion\nGITHUB_WEBHOOK_SECRET=%s\nCLOUDFLARE_API_TOKEN=%s\nCLOUDFLARE_ACCOUNT_ID=%s\nR2_BUCKET=osrs-content\nR2_CDN_BASE_URL=https://cdn.theoatrix.app\n' \
+              "${DISCORD_TOKEN}" "${DISCORD_CHANNEL_ID}" "${GITHUB_ACCESS_TOKEN}" \
+              "${GITHUB_WEBHOOK_SECRET}" "${CLOUDFLARE_API_TOKEN}" "${CLOUDFLARE_ACCOUNT_ID}" \
+              > .env
+            chmod 600 .env
+
+            docker compose up -d --build
+
+            echo "Waiting for health check..."
+            for i in {1..20}; do
+              STATUS=$(docker inspect -f '{{.State.Health.Status}}' discord-github-sync-bot 2>/dev/null || echo "starting")
+              if [ "$STATUS" == "healthy" ]; then
+                echo "✓ Bot is healthy"
+                break
+              fi
+              echo "Waiting... ($i/20)"
+              sleep 5
+            done
+
+            FINAL_STATUS=$(docker inspect -f '{{.State.Health.Status}}' discord-github-sync-bot 2>/dev/null || echo "unknown")
+            if [ "$FINAL_STATUS" != "healthy" ]; then
+              echo "✗ Bot failed to become healthy (status: $FINAL_STATUS)"
+              docker logs discord-github-sync-bot --tail 50
+              exit 1
+            fi
+
+            docker image prune -f
+            echo "Deployment complete!"
+        env:
+          DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+          DISCORD_CHANNEL_ID: ${{ secrets.DISCORD_CHANNEL_ID }}
+          GITHUB_ACCESS_TOKEN: ${{ secrets.DISCORD_GITHUB_PAT }}
+          GITHUB_WEBHOOK_SECRET: ${{ secrets.DISCORD_BOT_WEBHOOK_SECRET }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

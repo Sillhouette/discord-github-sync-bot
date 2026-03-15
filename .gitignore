@@ -15,6 +15,3 @@ npm-debug.log*
 # OS files
 .DS_Store
 Thumbs.db
-
-# Genie Team tooling (local only — not for public repo)
-.claude/

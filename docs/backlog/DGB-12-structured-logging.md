@@ -1,7 +1,7 @@
 ---
 spec_version: "1.0"
 type: shaped-work
-id: DGB-13
+id: DGB-12
 title: Structured JSON logging — Winston JSON transport and console.* consolidation
 status: shaped
 created: 2026-03-19
@@ -31,7 +31,7 @@ acceptance_criteria:
     status: pending
 ---
 
-# DGB-13: Structured JSON logging — Winston transport and console.* consolidation
+# DGB-12: Structured JSON logging — Winston transport and console.* consolidation
 
 ## Problem
 
@@ -60,7 +60,7 @@ The bot is open source and deployed by consumers across varied environments. The
 
 > **Note:** The `console.log` in `src/github/github.ts` (server startup message) is
 > already claimed by DGB-3 AC-5. If DGB-3 has landed before this item, that call site
-> is already migrated. DGB-13's scope for `console.*` migration covers `src/commentMap.ts`
+> is already migrated. DGB-12's scope for `console.*` migration covers `src/commentMap.ts`
 > and any remaining `console.*` calls — not the one in `github.ts`.
 
 ## Solution Sketch

@@ -1,15 +1,15 @@
 ---
 spec_version: "1.0"
 type: shaped-work
-id: DGB-10
+id: DGB-11
 title: Restructure to Ports & Adapters — introduce domain/syncService and platform adapters
 status: shaped
-created: 2026-03-15
+created: 2026-03DGB-15
 appetite: medium
 priority: P2
 target_project: discord-github-sync-bot
 author: architect
-depends_on: [DGB-1, DGB-2, DGB-3, DGB-4, DGB-12]
+depends_on: [DGB-1, DGB-2, DGB-3, DGB-4, DGB-10]
 tags: [architecture, ddd, restructure, coupling]
 acceptance_criteria:
   - id: AC-1
@@ -39,21 +39,21 @@ acceptance_criteria:
   - id: AC-9
     description: All existing tests continue to pass
     status: pending
-  - id: AC-10
+  - id: ACDGB-10
     description: tsconfig.json and vitest.config.ts path aliases or baseUrl are updated to reflect new structure
     status: pending
-  - id: AC-11
+  - id: ACDGB-11
     description: No domain type or SyncService method signature uses the string "node_id" — the platform-neutral term "externalId" is used throughout src/domain/
     status: pending
-  - id: AC-12
+  - id: ACDGB-12
     description: MessagingPort interface includes an optional impersonation capability (sendAs(identity, message)) that adapters may implement — Discord implements it, Teams/Slack stubs return the base send behavior
     status: pending
-  - id: AC-13
+  - id: ACDGB-13
     description: SyncService has unit tests covering onThreadCreated, onMessagePosted, onIssueOpened, and onCommentCreated with mock MessagingPort and VcsPort — these are the most critical new functions in the restructure and must have test coverage before the item is considered done
     status: pending
 ---
 
-# DGB-10: Restructure to Ports & Adapters — introduce domain/syncService and platform adapters
+# DGB-11: Restructure to Ports & Adapters — introduce domain/syncService and platform adapters
 
 ## Problem
 
@@ -210,7 +210,7 @@ domain/*  →  infrastructure/config.ts, infrastructure/logger.ts
 - **Appetite:** Medium
 - **In scope:** Full restructure to target layout; syncService extraction; all handler files become thin translators
 - **No-gos:** Changing sync behavior, changing Discord/GitHub API interactions, adding new features during restructure
-- **Do first:** DGB-1 (ThreadRepository), DGB-2 (deduplication), DGB-3 (config), DGB-4 (surface area), DGB-12 (local mapping store) — this restructure is cleaner if those are done first. DGB-12 in particular removes the "Discord URL in GitHub body" join strategy, which affects how commentRepository.ts is designed
+- **Do first:** DGB-1 (ThreadRepository), DGB-2 (deduplication), DGB-3 (config), DGB-4 (surface area), DGB-10 (local mapping store) — this restructure is cleaner if those are done first. DGB-10 in particular removes the "Discord URL in GitHub body" join strategy, which affects how commentRepository.ts is designed
 - **Not required before starting:** DGB-5 through DGB-9 can follow after or in parallel
 
 ## Risks & Assumptions

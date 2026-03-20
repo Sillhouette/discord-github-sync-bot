@@ -4,7 +4,7 @@ type: shaped-work
 id: DGB-8
 title: Update aging dev dependencies and add pnpm audit to CI
 status: shaped
-created: 2026-03-15
+created: 2026-03DGB-15
 appetite: small
 priority: P2
 target_project: discord-github-sync-bot
@@ -53,7 +53,7 @@ TS 5.7 includes improvements to type narrowing and control flow analysis that ca
 - **Appetite:** Small (toolchain only; no production dependency changes)
 - **In scope:** The three dependency upgrades listed above; flat config migration for ESLint v9
 
-> **Note:** `pnpm audit --audit-level=high` in CI is owned by DGB-14 AC-6, which creates the CI workflow from scratch. DGB-8 does not need to create or modify the CI workflow — DGB-14 handles it. If DGB-14 has already landed, this item's scope is purely the toolchain upgrades (AC-1 through AC-3).
+> **Note:** `pnpm audit --audit-level=high` in CI is owned by DGB-13 AC-6, which creates the CI workflow from scratch. DGB-8 does not need to create or modify the CI workflow — DGB-13 handles it. If DGB-13 has already landed, this item's scope is purely the toolchain upgrades (AC-1 through AC-3).
 - **No-gos:** Upgrading production dependencies (discord.js, octokit, express), changing CI provider, adding new lint rules beyond what v8 enables
 
 ## Solution Sketch

@@ -4,7 +4,7 @@ type: shaped-work
 id: DGB-6
 title: Type safety and convention cleanup — magic numbers, return types, logger consistency
 status: shaped
-created: 2026-03-15
+created: 2026-03DGB-15
 appetite: small
 priority: P2
 target_project: discord-github-sync-bot
@@ -40,13 +40,13 @@ acceptance_criteria:
 
 A cluster of small, independent type-safety and convention issues that can be addressed together. None are bugs today, but each represents a future maintenance risk or inconsistency that will compound as the codebase grows.
 
-**Magic number (CS-1, CS-11)**
+**Magic number (CS-1, CSDGB-11)**
 `discordHandlers.ts` line 154 compares `params.type === 15` where `15` is `ChannelType.GuildForum`. Without the named constant, TypeScript cannot narrow the type, so `params.availableTags` is accessed without type safety. If discord.js ever remaps the enum value, this silently breaks.
 
 **Inconsistent return type on update() (CS-8)**
 `githubActions.ts::update()` returns `true` on success and the caught value (anything) on failure — TypeScript infers `Promise<unknown>`. Callers do three-branch runtime inspection (`=== true`, `instanceof Error`, else) at each call site. This is an anti-pattern that spreads error-handling boilerplate.
 
-**Triggerer missing type alias (CS-10)**
+**Triggerer missing type alias (CSDGB-10)**
 `Triggerer` in `logger.ts` is not typed with `as const` + a union type alias. `Actions` right below it uses both. The inconsistency means log functions that accept a triggerer parameter cannot enforce type safety.
 
 **Ambiguous return shape (CS-9)**
@@ -58,9 +58,9 @@ A cluster of small, independent type-safety and convention issues that can be ad
 - `src/github/githubActions.ts` lines 171–182: `update()` return type
 - `src/logger.ts` lines 25–28: `Triggerer` missing `as const`
 - `src/github/githubActions.ts` lines 141–148: `{ channelId, id }` return shape
-- Diagnose item rank 2; Pass 2 findings CS-1, CS-8, CS-9, CS-10, CS-11
+- Diagnose item rank 2; Pass 2 findings CS-1, CS-8, CS-9, CSDGB-10, CSDGB-11
 
-> **Note:** The `console.log` in `github.ts` (CS-12) is owned by DGB-3 AC-5, which already touches that file. It is excluded from this item's scope to avoid duplicate work.
+> **Note:** The `console.log` in `github.ts` (CSDGB-12) is owned by DGB-3 AC-5, which already touches that file. It is excluded from this item's scope to avoid duplicate work.
 
 ## Appetite & Boundaries
 
@@ -81,7 +81,7 @@ async function update(issue_number: number, state: 'open' | 'closed'): Promise<v
   // throws on error — callers use try/catch
 }
 
-// CS-10: logger.ts
+// CSDGB-10: logger.ts
 export const Triggerer = { Discord: 'discord->github', Github: 'github->discord' } as const;
 export type TriggererValue = (typeof Triggerer)[keyof typeof Triggerer];
 

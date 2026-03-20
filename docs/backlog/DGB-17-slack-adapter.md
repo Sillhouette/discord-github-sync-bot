@@ -4,7 +4,7 @@ type: unshaped
 id: DGB-17
 title: Slack adapter — MessagingPort implementation for Slack channels
 status: blocked
-blocked_on: DGB-10
+blocked_on: DGB-11
 created: 2026-03-19
 appetite: tbd
 priority: tbd
@@ -15,10 +15,10 @@ tags: [feature, slack, messaging-adapter, multi-platform]
 
 # DGB-17: Slack adapter — MessagingPort implementation for Slack channels
 
-> **Status: Blocked on DGB-10.**
+> **Status: Blocked on DGB-11.**
 >
-> This item cannot be shaped until `MessagingPort` is defined and stable (DGB-10).
-> When DGB-10 is complete, run a spike to answer the open questions below,
+> This item cannot be shaped until `MessagingPort` is defined and stable (DGB-11).
+> When DGB-11 is complete, run a spike to answer the open questions below,
 > then shape the implementation against the port interface.
 
 ## Intent
@@ -57,7 +57,7 @@ Slack instead of Discord to benefit from the same bidirectional sync.
    Socket Mode or Events API webhooks would fit the same pattern.
 
 6. **Rate limiting:** Slack Web API has per-method rate limits (Tier 1–4). Discord has
-   per-route rate limits. Confirm `enqueueWebhookTask` (or its post-DGB-10 equivalent
+   per-route rate limits. Confirm `enqueueWebhookTask` (or its post-DGB-11 equivalent
    in the Slack adapter) handles Slack's rate limit headers correctly.
 
 7. **Multiple workspaces:** Can a single bot deployment serve multiple Slack workspaces,
@@ -74,5 +74,5 @@ src/slack/
 
 ## Dependencies
 
-- DGB-10 (MessagingPort interface must exist, including postMessageAs? optional method)
-- DGB-12 (MappingStore must support messagingPlatform: 'slack' and Slack's ts-based thread IDs)
+- DGB-11 (MessagingPort interface must exist, including postMessageAs? optional method)
+- DGB-10 (MappingStore must support messagingPlatform: 'slack' and Slack's ts-based thread IDs)

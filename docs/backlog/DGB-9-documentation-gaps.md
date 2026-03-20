@@ -4,7 +4,7 @@ type: shaped-work
 id: DGB-9
 title: Document Thread interface field semantics, enqueueWebhookTask contract, and lock state machine
 status: shaped
-created: 2026-03-15
+created: 2026-03DGB-15
 appetite: small
 priority: P3
 target_project: discord-github-sync-bot

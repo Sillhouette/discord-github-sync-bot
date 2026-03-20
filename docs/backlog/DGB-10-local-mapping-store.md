@@ -1,7 +1,7 @@
 ---
 spec_version: "1.0"
 type: shaped-work
-id: DGB-12
+id: DGB-10
 title: Replace Discord-URL join strategy with a local platform-agnostic mapping store
 status: shaped
 created: 2026-03-19
@@ -13,7 +13,7 @@ depends_on: [DGB-1]
 tags: [architecture, persistence, multi-platform, mapping-store]
 acceptance_criteria:
   - id: AC-1
-    description: src/mappingStore.ts (or src/domain/mappingStore.ts pre-DGB-10) persists thread↔issue mappings locally — not inside GitHub issue bodies
+    description: src/mappingStore.ts (or src/domain/mappingStore.ts pre-DGB-11) persists thread↔issue mappings locally — not inside GitHub issue bodies
     status: pending
   - id: AC-2
     description: MappingStore entries use platform-neutral field names — externalId (VCS issue identifier), messagingThreadId (messaging platform thread identifier), platform (vcs source name), messagingPlatform (messaging platform name)
@@ -39,12 +39,12 @@ acceptance_criteria:
   - id: AC-9
     description: A one-time migration at startup detects pre-existing deployments (Discord URL present in issue bodies, no local mapping file) and offers a reconciliation path — either rebuild from GitHub API scan or start fresh with a warning
     status: pending
-  - id: AC-10
+  - id: ACDGB-10
     description: The migration function is tested with a fixture representing a GitHub issue body containing an embedded Discord URL — verifies the resulting MappingStore entry has correct messagingThreadId, externalId, and externalNumber values; this path runs exactly once per deployment and cannot be re-run, so test coverage is required before shipping
     status: pending
 ---
 
-# DGB-12: Replace Discord-URL join strategy with a local platform-agnostic mapping store
+# DGB-10: Replace Discord-URL join strategy with a local platform-agnostic mapping store
 
 ## Problem
 
@@ -73,7 +73,7 @@ Comment ID mappings (`git_id ↔ discord_id`) are stored in a separate flat file
 
 - **Appetite:** Medium
 - **In scope:** New `MappingStore` replaces both `commentMap.ts` and the body-embedding join strategy; startup reconciliation reads from local store; schema versioning with v1 migration; migration path for existing deployments
-- **No-gos:** Changing Discord API interactions, changing GitHub API interactions, adding multi-platform support (that is DGB-10's job — this item creates the foundation)
+- **No-gos:** Changing Discord API interactions, changing GitHub API interactions, adding multi-platform support (that is DGB-11's job — this item creates the foundation)
 - **Schema design must be forward-compatible:** field names use `externalId` / `messagingThreadId` / `platform` — not `node_id` / `discord_id` / `github`
 
 ## Solution Sketch
@@ -122,10 +122,10 @@ If the local mapping file does not exist but GitHub issues with Discord URLs are
 |---|---|---|
 | All existing thread↔issue mappings can be reconstructed from GitHub issue body scan | correctness | Test migration against a populated GitHub repo before switching |
 | Atomic write (tmpFile + renameSync) is sufficient durability for a single-container deployment | feasibility | Existing commentMap.ts uses this pattern successfully |
-| Schema v1 field names (`externalId`, `messagingThreadId`, `vcsPlatform`) are stable enough to commit to | architecture | Review against DGB-10 domain type design before finalising |
+| Schema v1 field names (`externalId`, `messagingThreadId`, `vcsPlatform`) are stable enough to commit to | architecture | Review against DGB-11 domain type design before finalising |
 | Removing Discord URLs from issue bodies does not break any user workflows | correctness | Check if any consumers use the Discord URL in issue bodies for other purposes |
 
 ## Routing
 
-- [x] **Architect** — Review schema field names against DGB-10 domain types before implementation; confirm migration path for existing deployments
+- [x] **Architect** — Review schema field names against DGB-11 domain types before implementation; confirm migration path for existing deployments
 - [x] **Crafter** — Implement MappingStore; replace commentMap.ts; update startup reconciliation; run full test suite after each phase

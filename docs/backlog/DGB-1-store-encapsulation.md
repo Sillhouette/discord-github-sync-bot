@@ -4,7 +4,7 @@ type: shaped-work
 id: DGB-1
 title: Encapsulate Store behind a ThreadRepository
 status: shaped
-created: 2026-03-15
+created: 2026-03DGB-15
 appetite: medium
 priority: P1
 target_project: discord-github-sync-bot

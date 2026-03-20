@@ -4,7 +4,7 @@ type: shaped-work
 id: DGB-7
 title: Close test coverage gaps in core sync paths
 status: shaped
-created: 2026-03-15
+created: 2026-03DGB-15
 appetite: small
 priority: P2
 target_project: discord-github-sync-bot
@@ -65,7 +65,7 @@ All four are tested only for the "no issue number" guard case. The path where `o
 - **Appetite:** Small (new tests only, no implementation changes)
 - **In scope:** The four gaps listed above; vitest fake timers for setTimeout path
 - **No-gos:** Changing test infrastructure, adding integration tests, adding coverage tooling
-- **Ordering:** Must be delivered before DGB-10. DGB-10 renames the test files this item targets (`discordHandlers.test.ts` → `eventHandlers.test.ts`, `githubActions.test.ts` → `port.test.ts`). New tests added here will be migrated as part of DGB-10.
+- **Ordering:** Must be delivered before DGB-11. DGB-11 renames the test files this item targets (`discordHandlers.test.ts` → `eventHandlers.test.ts`, `githubActions.test.ts` → `port.test.ts`). New tests added here will be migrated as part of DGB-11.
 - **Interaction with DGB-6:** AC-4 and AC-5 test `closeIssue`/`openIssue` against the current `returns true | false` behavior. DGB-6 AC-3/4 changes `update()` to throw and updates callers to use try/catch. If DGB-6 runs before DGB-7, update the solution sketch for AC-4 and AC-5 to test the throw-based error path (no return value to assert, verify the caught error is logged instead).
 
 ## Solution Sketch

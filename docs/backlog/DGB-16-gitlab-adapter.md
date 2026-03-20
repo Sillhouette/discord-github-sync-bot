@@ -4,7 +4,7 @@ type: unshaped
 id: DGB-16
 title: GitLab adapter — VcsPort implementation for GitLab Issues
 status: blocked
-blocked_on: DGB-10
+blocked_on: DGB-11
 created: 2026-03-19
 appetite: tbd
 priority: tbd
@@ -15,10 +15,10 @@ tags: [feature, gitlab, vcs-adapter, multi-platform]
 
 # DGB-16: GitLab adapter — VcsPort implementation for GitLab Issues
 
-> **Status: Blocked on DGB-10.**
+> **Status: Blocked on DGB-11.**
 >
-> This item cannot be shaped until `VcsPort` is defined and stable (DGB-10).
-> When DGB-10 is complete, run a spike to answer the open questions below,
+> This item cannot be shaped until `VcsPort` is defined and stable (DGB-11).
+> When DGB-11 is complete, run a spike to answer the open questions below,
 > then shape the implementation against the port interface.
 
 ## Intent
@@ -53,8 +53,8 @@ tracker to use the bot without GitHub.
    no-op with warning.)
 
 6. **Startup reconciliation:** `listActiveIssues()` on GitHub scans issue bodies for
-   Discord URLs (pre-DGB-12) or reads the local MappingStore (post-DGB-12). With
-   MappingStore in place (DGB-12), this should work identically for GitLab — confirm
+   Discord URLs (pre-DGB-10) or reads the local MappingStore (post-DGB-10). With
+   MappingStore in place (DGB-10), this should work identically for GitLab — confirm
    the MappingStore `vcsPlatform: 'gitlab'` field is sufficient.
 
 ## Rough Shape (post-spike)
@@ -69,5 +69,5 @@ src/gitlab/
 
 ## Dependencies
 
-- DGB-10 (VcsPort interface must exist)
-- DGB-12 (MappingStore must support vcsPlatform: 'gitlab')
+- DGB-11 (VcsPort interface must exist)
+- DGB-10 (MappingStore must support vcsPlatform: 'gitlab')

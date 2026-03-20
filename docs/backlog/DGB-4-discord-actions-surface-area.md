@@ -4,7 +4,7 @@ type: shaped-work
 id: DGB-4
 title: Reduce discordActions.ts public surface area and extract shared text utilities
 status: shaped
-created: 2026-03-15
+created: 2026-03DGB-15
 appetite: small
 priority: P2
 target_project: discord-github-sync-bot

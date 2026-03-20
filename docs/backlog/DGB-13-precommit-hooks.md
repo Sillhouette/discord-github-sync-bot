@@ -1,7 +1,7 @@
 ---
 spec_version: "1.0"
 type: shaped-work
-id: DGB-14
+id: DGB-13
 title: Pre-commit hooks — Husky + lint-staged + pre-push test gate
 status: shaped
 created: 2026-03-19
@@ -34,7 +34,7 @@ acceptance_criteria:
     status: pending
 ---
 
-# DGB-14: Pre-commit hooks — Husky + lint-staged + pre-push test gate
+# DGB-13: Pre-commit hooks — Husky + lint-staged + pre-push test gate
 
 ## Problem
 

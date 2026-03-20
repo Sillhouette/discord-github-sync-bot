@@ -15,14 +15,14 @@ Specifically:
 1. What are the platform-specific concepts that would break a naive "just add GitLab support" approach?
 2. Where do GitHub, GitLab, and Bitbucket diverge in ways the domain model must account for?
 3. Where do Discord, Slack, and Teams diverge in ways the messaging adapter must account for?
-4. Is DGB-10's proposed `src/domain/syncService.ts` the right seam, or does the abstraction need to be different?
+4. Is DGB-11's proposed `src/domain/syncService.ts` the right seam, or does the abstraction need to be different?
 5. What are the riskiest assumptions in pursuing a "generic sync engine" vs. "Discord-GitHub bot with optional extras"?
 
 ---
 
 ## What We Found in the Current Domain Model (GitHub-specific concepts)
 
-The current codebase has deep GitHub and Discord specificity woven into every layer. This is not a criticism — it is appropriate for a focused tool. The purpose of this audit is to surface exactly where that specificity lives before it gets frozen into DGB-10's port interfaces.
+The current codebase has deep GitHub and Discord specificity woven into every layer. This is not a criticism — it is appropriate for a focused tool. The purpose of this audit is to surface exactly where that specificity lives before it gets frozen into DGB-11's port interfaces.
 
 ### `node_id` is a load-bearing GitHub-only concept
 
@@ -108,7 +108,7 @@ The GitHub webhook payload shape is deeply assumed in `githubHandlers.ts`:
 - `req.body.comment.id` (integer) — GitLab uses `req.body.object_attributes.id`
 - `req.body.issue.user.avatar_url` — GitLab provides this but nested differently
 
-**Finding:** Webhook payloads are not normalizable by simple field mapping. The structural divergence is deep enough that each source platform needs its own webhook handler (the current `githubHandlers.ts` pattern), with normalization to a common domain event type happening inside the handler before the domain is called. DGB-10's proposed `webhookHandlers.ts` is the right place for this normalization — but the domain event types it emits must be generic, not GitHub-shaped.
+**Finding:** Webhook payloads are not normalizable by simple field mapping. The structural divergence is deep enough that each source platform needs its own webhook handler (the current `githubHandlers.ts` pattern), with normalization to a common domain event type happening inside the handler before the domain is called. DGB-11's proposed `webhookHandlers.ts` is the right place for this normalization — but the domain event types it emits must be generic, not GitHub-shaped.
 
 #### Concepts That Exist Only on GitHub
 
@@ -138,7 +138,7 @@ The GitHub webhook payload shape is deeply assumed in `githubHandlers.ts`:
 | GitLab | Flat comments (notes) on issues; threaded "discussions" on MRs | Edit/delete via REST |
 | Bitbucket | Flat comments on issues | Edit/delete via REST |
 
-**Finding:** For the issue sync use case, all three platforms converge on flat comments. Comment threading is a Discussions-specific concern (DGB-11), not a general multi-platform concern for the basic issue sync.
+**Finding:** For the issue sync use case, all three platforms converge on flat comments. Comment threading is a Discussions-specific concern (DGB-15), not a general multi-platform concern for the basic issue sync.
 
 ---
 
@@ -200,9 +200,9 @@ Teams channels have posts and replies. A "post" is closer to a Discord thread th
 
 ---
 
-## DGB-10 Assessment — Sufficient or Needs Redesign?
+## DGB-11 Assessment — Sufficient or Needs Redesign?
 
-### What DGB-10 Gets Right
+### What DGB-11 Gets Right
 
 The proposed Ports & Adapters split is the correct structural move. Breaking the bidirectional coupling between `discord/` and `github/` is necessary regardless of whether multi-platform support is added. The proposed `domain/syncService.ts` seam is the right place for cross-cutting sync logic.
 
@@ -219,7 +219,7 @@ constructor(
 
 ...is a correct dependency inversion for the two-platform case.
 
-### Where DGB-10's Design Breaks for Multi-Platform
+### Where DGB-11's Design Breaks for Multi-Platform
 
 **1. The `SyncService` method signatures are GitHub-typed, not VCS-typed.**
 
@@ -258,11 +258,11 @@ Same issue as GitHub: `discord: DiscordPort` binds the service to a single messa
 
 The `Thread` domain type itself needs a platform-agnostic primary identifier for thread lookup — not `node_id` which is a GitHub artifact.
 
-**5. DGB-10's proposed `SyncService` interface is a direct extraction of current code, not a redesign.**
+**5. DGB-11's proposed `SyncService` interface is a direct extraction of current code, not a redesign.**
 
-Looking at the method signatures, every `onIssue*` method maps 1:1 to a GitHub webhook event. This is correct for DGB-10's stated goal (Ports & Adapters restructure without behavior change) but would freeze in GitHub-specific event semantics.
+Looking at the method signatures, every `onIssue*` method maps 1:1 to a GitHub webhook event. This is correct for DGB-11's stated goal (Ports & Adapters restructure without behavior change) but would freeze in GitHub-specific event semantics.
 
-### What Would Need to Change in DGB-10 to Support GitLab as a Second VCS
+### What Would Need to Change in DGB-11 to Support GitLab as a Second VCS
 
 1. **Replace `GitHubPort` with `VcsPort`** — a platform-agnostic interface covering `createIssue`, `closeIssue`, `lockIssue`, `createComment`, `editComment`, `deleteComment`, `deleteIssue`. Both the GitHub and GitLab adapters implement this interface.
 
@@ -289,7 +289,7 @@ Looking at the method signatures, every `onIssue*` method maps 1:1 to a GitHub w
 
 **Counter-evidence:** For the OSS self-hosted use case, users control their own GitHub repos and Discord servers, so the embedded URL approach is reliable within that scope. It has been working in production.
 
-**Why this is #1:** Any multi-platform expansion requires rethinking this join strategy before anything else. It is not an adapter concern — it is a data model concern that affects the `ThreadRepository` and `CommentRepository` abstractions in DGB-10.
+**Why this is #1:** Any multi-platform expansion requires rethinking this join strategy before anything else. It is not an adapter concern — it is a data model concern that affects the `ThreadRepository` and `CommentRepository` abstractions in DGB-11.
 
 ---
 
@@ -341,7 +341,7 @@ Looking at the method signatures, every `onIssue*` method maps 1:1 to a GitHub w
 ### Rank 7 — Usability: JSON env var config for multi-channel routing is fragile (LOW-MODERATE)
 
 **Type:** Usability
-**Risk:** DGB-11 notes that `CHANNEL_CONFIGS=[{"channelId":"123","target":"issues"}]` is error-prone in Docker Compose, GitHub Actions, and `.env` files. Multiplied across platform pairs, this config surface becomes unwieldy. A multi-platform bot needs a config file (YAML/TOML) rather than environment variables.
+**Risk:** DGB-15 notes that `CHANNEL_CONFIGS=[{"channelId":"123","target":"issues"}]` is error-prone in Docker Compose, GitHub Actions, and `.env` files. Multiplied across platform pairs, this config surface becomes unwieldy. A multi-platform bot needs a config file (YAML/TOML) rather than environment variables.
 
 **Counter-evidence:** Many self-hosted bots (e.g., Matrix bridges) use config files. This is a precedent users can follow. The engineering cost is low.
 
@@ -358,9 +358,9 @@ Looking at the method signatures, every `onIssue*` method maps 1:1 to a GitHub w
 
 ## Recommendation
 
-### DGB-10 should proceed as designed — with one targeted modification
+### DGB-11 should proceed as designed — with one targeted modification
 
-DGB-10's Ports & Adapters restructure is correct and necessary. It should not be blocked on full multi-platform generalization. However, **one change is recommended before implementation begins:**
+DGB-11's Ports & Adapters restructure is correct and necessary. It should not be blocked on full multi-platform generalization. However, **one change is recommended before implementation begins:**
 
 **Replace all occurrences of `node_id` in domain-layer types and `SyncService` method signatures with `externalId: string`.**
 
@@ -369,7 +369,7 @@ This is a low-risk, low-cost change that:
 - Makes the seam future-proof without requiring any new platform support yet
 - Costs approximately 20-30 line changes in types and handler calls
 
-Everything else in DGB-10 can be delivered as-is. The `GitHubPort` and `DiscordPort` interface names are fine for now — they are adapter names, not domain names.
+Everything else in DGB-11 can be delivered as-is. The `GitHubPort` and `DiscordPort` interface names are fine for now — they are adapter names, not domain names.
 
 ### The join-key strategy must be redesigned before any second VCS source is added
 
@@ -381,8 +381,8 @@ This is a pre-requisite for any multi-VCS work, not something to address at impl
 
 The riskiest path is attempting full genericity in one phase. The recommended path is incremental adapter addition:
 
-1. **Phase 1 (DGB-10 + DGB-10 mod):** Ports & Adapters restructure, swap `node_id` → `externalId` in domain. No new platform support.
-2. **Phase 2 (DGB-11):** GitHub Discussions as a second VCS *target* (same GitHub source, different endpoint). Lower complexity than a second VCS *source*.
+1. **Phase 1 (DGB-11 + DGB-11 mod):** Ports & Adapters restructure, swap `node_id` → `externalId` in domain. No new platform support.
+2. **Phase 2 (DGB-15):** GitHub Discussions as a second VCS *target* (same GitHub source, different endpoint). Lower complexity than a second VCS *source*.
 3. **Phase 3:** Replace join-key strategy with a proper local mapping store.
 4. **Phase 4:** Add GitLab adapter. At this point the abstract `VcsPort` interface and `MessagingPort` interface become real contracts enforced by two implementations.
 
@@ -390,14 +390,14 @@ This path avoids the trap of designing a generic interface with only one concret
 
 ---
 
-## Impact on Existing Backlog (DGB-1 through DGB-11)
+## Impact on Existing Backlog (DGB-1 through DGB-15)
 
 | Item | Impact |
 |------|--------|
 | DGB-1 (ThreadRepository) | Unaffected. Proceed. The ThreadRepository abstraction is correct and needed. |
 | DGB-2 (Deduplication) | Unaffected. Proceed. |
-| DGB-3 (Config) | Moderate. The config layer will need redesign for multi-channel routing (DGB-11 Option B). The DGB-3 changes should not hard-code assumptions about a single channel+single platform pair. |
+| DGB-3 (Config) | Moderate. The config layer will need redesign for multi-channel routing (DGB-15 Option B). The DGB-3 changes should not hard-code assumptions about a single channel+single platform pair. |
 | DGB-4 (Surface area) | Unaffected. Proceed. |
 | DGB-5 through DGB-9 | Unaffected. Proceed. |
-| DGB-10 (Ports & Adapters) | Recommend one modification: rename `node_id` to `externalId` in domain types and `SyncService` signatures. All other design decisions are sound. |
-| DGB-11 (Discussions routing) | This spike reinforces that Discussions routing is lower complexity than a second VCS source (same GitHub auth, same node_id scheme, same Octokit client). The join-key question (how does the bot identify which GitHub Discussion corresponds to a Discord thread at startup?) still needs to be answered in the DGB-11 spike, as Discussions cannot use the same `formatIssuesToThreads` body-scanning approach without modification. |
+| DGB-11 (Ports & Adapters) | Recommend one modification: rename `node_id` to `externalId` in domain types and `SyncService` signatures. All other design decisions are sound. |
+| DGB-15 (Discussions routing) | This spike reinforces that Discussions routing is lower complexity than a second VCS source (same GitHub auth, same node_id scheme, same Octokit client). The join-key question (how does the bot identify which GitHub Discussion corresponds to a Discord thread at startup?) still needs to be answered in the DGB-15 spike, as Discussions cannot use the same `formatIssuesToThreads` body-scanning approach without modification. |

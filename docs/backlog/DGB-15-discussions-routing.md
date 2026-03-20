@@ -1,11 +1,11 @@
 ---
 spec_version: "1.0"
 type: unshaped
-id: DGB-11
+id: DGB-15
 title: GitHub Discussions routing — sync Discord threads to Discussions instead of (or alongside) Issues
 status: blocked
-blocked_on: DGB-10
-created: 2026-03-15
+blocked_on: DGB-11
+created: 2026-03DGB-15
 appetite: tbd
 priority: P3
 target_project: discord-github-sync-bot
@@ -13,17 +13,17 @@ author: architect
 tags: [feature, github, discussions, routing]
 ---
 
-# DGB-11: GitHub Discussions Routing
+# DGB-15: GitHub Discussions Routing
 
-> **Status: Blocked on DGB-10.**
+> **Status: Blocked on DGB-11.**
 >
-> The spike and shaping work for this item must wait until DGB-10 is delivered and the
+> The spike and shaping work for this item must wait until DGB-11 is delivered and the
 > `VcsPort` interface is stable. The spike questions below are still valid, but the
 > implementation design will be expressed in terms of `VcsPort` methods — not direct
 > GitHub API calls. Do not run the spike or attempt to shape the implementation until
 > the port interface exists.
 >
-> When DGB-10 is complete: run the spike → update this document with findings →
+> When DGB-11 is complete: run the spike → update this document with findings →
 > reshape the implementation section against the `VcsPort` contract.
 
 ---

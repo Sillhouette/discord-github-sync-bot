@@ -94,7 +94,7 @@ No `.github/workflows/` directory exists. CI/CD is described in docs but not imp
 1. `data/commentMap.json` — a flat JSON file mapping GitHub comment IDs to Discord message IDs
 2. In-memory `store.ts` — thread state, rebuilt from GitHub API at every startup via `getIssues()`
 
-The real risk is **commentMap.json schema evolution**. If the shape of `{ discord_id, node_id }` ever needs to change (e.g., adding a `thread_node_id` field for cross-platform deduplication as part of DGB-11), there is no migration path. Old data persists in the old shape; new code either silently ignores missing fields or crashes.
+The real risk is **commentMap.json schema evolution**. If the shape of `{ discord_id, node_id }` ever needs to change (e.g., adding a `thread_node_id` field for cross-platform deduplication as part of DGB-15), there is no migration path. Old data persists in the old shape; new code either silently ignores missing fields or crashes.
 
 Secondary risk: `store.ts` in-memory threads are only as good as the startup reconciliation. If `getIssues()` fails at startup, threads are lost for that session.
 
@@ -112,7 +112,7 @@ Secondary risk: `store.ts` in-memory threads are only as good as the startup rec
 
 | Assumption | Type | Confidence | Evidence For | Evidence Against |
 |---|---|---|---|---|
-| The commentMap schema will need to evolve | value | low | DGB-11 discusses Discussions routing, which likely adds fields | commentMap is simple and stable for current feature set |
+| The commentMap schema will need to evolve | value | low | DGB-15 discusses Discussions routing, which likely adds fields | commentMap is simple and stable for current feature set |
 | commentMap.json atomic write (renameSync) prevents corruption in normal use | feasibility | high | `commentMap.ts` lines 40–42: tmpFile + renameSync pattern is correct | Mid-write container kill before rename would still corrupt |
 | In-memory store loss on restart is tolerable | value | moderate | `getIssues()` reconciles from GitHub API at startup | Startup reconciliation has no test for partial failure |
 
@@ -128,7 +128,7 @@ Secondary risk: `store.ts` in-memory threads are only as good as the startup rec
 
 **Trivial.** Add a `_schemaVersion: 1` field to commentMap.json writes. Add a migration check at startup: if `_schemaVersion` is missing or outdated, run the appropriate transform before hydrating. One-file change, no new dependencies.
 
-**Navigator Decision Needed:** Is DGB-11 (Discussions routing) imminent? If yes, the schema change is coming and versioning pays off now. If DGB-11 is deferred 6+ months, this investment may be premature.
+**Navigator Decision Needed:** Is DGB-15 (Discussions routing) imminent? If yes, the schema change is coming and versioning pays off now. If DGB-15 is deferred 6+ months, this investment may be premature.
 
 ---
 
@@ -196,34 +196,34 @@ All 21 "broken references" flagged by the DX Coach report are **prescriptive for
 
 | Document | Broken Reference | Actual Status |
 |---|---|---|
-| `docs/cleanup/20260315_coupling_cohesion_pass1.md` | `src/domain/thread.ts`, `src/domain/events.ts` | Does not exist — DGB-10 output |
-| `docs/cleanup/20260315_coupling_cohesion_pass1.md` | `src/infrastructure/logger.ts` | Does not exist — DGB-10 output |
+| `docs/cleanup/20260315_coupling_cohesion_pass1.md` | `src/domain/thread.ts`, `src/domain/events.ts` | Does not exist — DGB-11 output |
+| `docs/cleanup/20260315_coupling_cohesion_pass1.md` | `src/infrastructure/logger.ts` | Does not exist — DGB-11 output |
 | `docs/cleanup/20260315_coupling_cohesion_pass1.md` | `src/formatting.ts`, `src/discord/webhookManager.ts`, `src/github/issueFormatter.ts`, `src/github/githubClient.ts` | Does not exist — future state from cleanup analysis |
 | `docs/cleanup/20260315_encapsulation_smells_pass2.md` | `src/textUtils.ts` (EV-4 remedy) | Does not exist — DGB-4 output (DGB-4 not yet delivered) |
 | `docs/backlog/DGB-4-discord-actions-surface-area.md` | `src/textUtils.ts` (solution sketch) | Correct — this IS the file DGB-4 will create |
-| `docs/backlog/DGB-10-ddd-ports-adapters-restructure.md` | `src/discord/client.ts` and other renamed paths | Correct — these are DGB-10's planned target structure |
+| `docs/backlog/DGB-11-ddd-ports-adapters-restructure.md` | `src/discord/client.ts` and other renamed paths | Correct — these are DGB-11's planned target structure |
 
 ### Root Cause Analysis
 
-The cleanup docs (`coupling_cohesion_pass1.md`, `encapsulation_smells_pass2.md`) were written as **diagnosis + remediation documents** describing a desired future state. The paths they cite are targets, not current reality. DGB-10 was shaped from these docs and captures the full migration plan — but the connection is implicit.
+The cleanup docs (`coupling_cohesion_pass1.md`, `encapsulation_smells_pass2.md`) were written as **diagnosis + remediation documents** describing a desired future state. The paths they cite are targets, not current reality. DGB-11 was shaped from these docs and captures the full migration plan — but the connection is implicit.
 
 The `broken_path_ref` violations are a DX Coach false-positive category: these are valid forward-looking architectural references, not typos or documentation rot. The docs are accurate; they're just describing a state that hasn't been built yet.
 
 ### Recommended Resolution
 
-**Annotate, do not rewrite.** Add a header notice to each cleanup doc making the dependency on DGB-10 explicit:
+**Annotate, do not rewrite.** Add a header notice to each cleanup doc making the dependency on DGB-11 explicit:
 
 ```markdown
 > **Note (2026-03-19):** Remedies in this document reference the target structure
-> defined in DGB-10 (Ports & Adapters restructure, status: shaped, depends-on: DGB-1, 2, 3, 4).
+> defined in DGB-11 (Ports & Adapters restructure, status: shaped, depends-on: DGB-1, 2, 3, 4).
 > Files like `src/domain/`, `src/infrastructure/`, and `src/formatting.ts` do not yet exist.
-> See [DGB-10](../backlog/DGB-10-ddd-ports-adapters-restructure.md) for the full migration plan.
+> See [DGB-11](../backlog/DGB-11-ddd-ports-adapters-restructure.md) for the full migration plan.
 ```
 
 **Do NOT:**
-- Rewrite remedies to match current file names (they would become stale again after DGB-10 executes)
-- Execute DGB-10 prematurely (DGB-10 depends on DGB-1, DGB-2, DGB-3, DGB-4 all being complete)
-- Delete the cleanup docs (they contain the full analysis trail that informed DGB-10)
+- Rewrite remedies to match current file names (they would become stale again after DGB-11 executes)
+- Execute DGB-11 prematurely (DGB-11 depends on DGB-1, DGB-2, DGB-3, DGB-4 all being complete)
+- Delete the cleanup docs (they contain the full analysis trail that informed DGB-11)
 
 **For DGB-4 reference to `src/textUtils.ts`:** No annotation needed — this is the correct target path DGB-4 will create.
 
@@ -231,18 +231,18 @@ The `broken_path_ref` violations are a DX Coach false-positive category: these a
 
 | Assumption | Type | Confidence | Evidence For | Evidence Against |
 |---|---|---|---|---|
-| DGB-10 is still the intended architectural direction | value | high | DGB-10 status is "shaped" with P2 priority; 10 ACs defined; no countermanding ADR | None |
+| DGB-11 is still the intended architectural direction | value | high | DGB-11 status is "shaped" with P2 priority; 10 ACs defined; no countermanding ADR | None |
 | Forward references cause contributor confusion | usability | moderate | Standard practice is to annotate future-state docs | Risk of annotation itself becoming stale |
 | Cleanup docs are navigated by contributors | usability | moderate | In project docs tree; referenced from diagnose report | No evidence of actual contributor confusion |
 
 ### Opportunity (Unshaped)
 
 - Cleanup docs contain forward-state paths unreachable in current codebase without explicit context
-- The relationship between cleanup analysis docs and resulting backlog items (DGB-1 through DGB-10) is implicit
+- The relationship between cleanup analysis docs and resulting backlog items (DGB-1 through DGB-11) is implicit
 
 ### Recommended Appetite
 
-**Trivial.** Add a 3-line header annotation to `20260315_coupling_cohesion_pass1.md` and `20260315_encapsulation_smells_pass2.md` pointing to DGB-10. Estimated effort: 10 minutes.
+**Trivial.** Add a 3-line header annotation to `20260315_coupling_cohesion_pass1.md` and `20260315_encapsulation_smells_pass2.md` pointing to DGB-11. Estimated effort: 10 minutes.
 
 ---
 
@@ -251,7 +251,7 @@ The `broken_path_ref` violations are a DX Coach false-positive category: these a
 1. **Logging consumption pattern.** How do operators actually monitor the bot in production? If they use `docker logs -f` only, structured JSON may have no audience. If they forward to a log aggregator, it becomes essential.
 2. **Deployment frequency.** How often is the bot updated? A deployment every few months lowers rollback urgency significantly vs. weekly deployments.
 3. **Discord/GitHub event volume.** High event volume + unstructured logs creates more painful debugging than low volume. Unknown from codebase alone.
-4. **Whether DGB-10 is prioritized for imminent execution.** If DGB-10 is scheduled soon, the cleanup doc annotation is cosmetically important but low risk. If deferred 6+ months, forward references will mislead contributors for longer.
+4. **Whether DGB-11 is prioritized for imminent execution.** If DGB-11 is scheduled soon, the cleanup doc annotation is cosmetically important but low risk. If deferred 6+ months, forward references will mislead contributors for longer.
 5. **commentMap.json current size and schema stability.** If the schema has been stable for months with no planned changes, migration tooling remains lower priority.
 6. **Deployment target for CI/CD.** VPS with local Docker vs. a container registry (GHCR, Docker Hub) determines the full shape of a CI/CD workflow.
 
@@ -262,9 +262,9 @@ The `broken_path_ref` violations are a DX Coach false-positive category: these a
 | Gap | Status | Next Step |
 |---|---|---|
 | Gap 1: Observability | ✅ Ready for Shaper | Problem well-understood; appetite is Small |
-| Gap 2: Migration tooling | ⚠️ Navigator decision needed | Is DGB-11 imminent? If yes, shape schema versioning now. If no, defer. |
+| Gap 2: Migration tooling | ⚠️ Navigator decision needed | Is DGB-15 imminent? If yes, shape schema versioning now. If no, defer. |
 | Gap 3-A: CI/CD pipeline | ⚠️ Navigator decision needed | What is the deployment target? Determines CI/CD scope. |
 | Gap 3-B: Image tagging / rollback | ✅ Ready for Shaper | Independent of full CI/CD; appetite is Small |
-| Gap 4: Doc annotation | ✅ Ready for Shaper | Trivial; annotate two cleanup docs pointing to DGB-10 |
+| Gap 4: Doc annotation | ✅ Ready for Shaper | Trivial; annotate two cleanup docs pointing to DGB-11 |
 
-**Recommended cadence:** Revisit this snapshot when DGB-11 scoping begins (to confirm whether commentMap schema change is in scope) and when DGB-10 sequencing is planned (to confirm cleanup doc annotation timing).
+**Recommended cadence:** Revisit this snapshot when DGB-15 scoping begins (to confirm whether commentMap schema change is in scope) and when DGB-11 sequencing is planned (to confirm cleanup doc annotation timing).

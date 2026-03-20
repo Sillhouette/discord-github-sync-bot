@@ -11,7 +11,7 @@ import {
 } from "../discord/discordActions";
 import { GitHubLabel } from "../interfaces";
 import { logger } from "../logger";
-import { store } from "../store";
+import { threadRepository } from "../store";
 import { getDiscordInfoFromGithubBody } from "./githubActions";
 
 function getIssueNodeId(req: Request): string | undefined {
@@ -24,7 +24,7 @@ export async function handleOpened(req: Request) {
 
   logger.info(`handleOpened: node_id=${node_id} title="${title}"`);
 
-  if (store.threads.some((thread) => thread.node_id === node_id)) {
+  if (threadRepository.findByNodeId(node_id) !== undefined) {
     logger.info(`handleOpened: skipping node_id=${node_id} — thread already tracked`);
     return;
   }
@@ -33,7 +33,7 @@ export async function handleOpened(req: Request) {
   const appliedTags = (<GitHubLabel[]>labels)
     .map(
       (label) =>
-        store.availableTags.find((tag) => tag.name === label.name)?.id || "",
+        threadRepository.getAvailableTags().find((tag) => tag.name === label.name)?.id || "",
     )
     .filter((i) => i);
 
@@ -81,7 +81,7 @@ export async function handleEdited(req: Request) {
     return;
   }
 
-  const thread = store.threads.find((t) => t.node_id === node_id);
+  const thread = threadRepository.findByNodeId(node_id);
   if (!thread) {
     logger.warn(`handleEdited: no thread found for node_id=${node_id} git_id=${id}`);
     return;

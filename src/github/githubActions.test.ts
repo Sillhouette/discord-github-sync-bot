@@ -13,7 +13,7 @@ import {
   getIssues,
 } from './githubActions';
 import { Thread, ThreadComment } from '../interfaces';
-import { store } from '../store';
+import { threadRepository } from '../store';
 
 // Hoisted mock instance — must be declared before vi.mock factories run.
 // Mocking @octokit/rest at the constructor level so the module-internal
@@ -82,8 +82,7 @@ vi.mock('../r2', () => ({ uploadToR2: vi.fn().mockResolvedValue(null) }));
 describe('GitHub Actions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    store.threads = [];
-    store.availableTags = [];
+    threadRepository.clear();
   });
 
   describe('getDiscordInfoFromGithubBody', () => {

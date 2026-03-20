@@ -23,19 +23,19 @@ import {
 } from "../github/githubActions";
 import { evictForumCache } from "./discordActions";
 import { logger } from "../logger";
-import { store } from "../store";
+import { threadRepository } from "../store";
 import { Thread } from "../interfaces";
 
 export async function handleClientReady(client: Client) {
   logger.info(`Logged in as ${client.user?.tag}!`);
 
-  store.threads = await getIssues();
+  threadRepository.loadThreads(await getIssues());
 
   // Validate that each thread's Discord channel still exists; remove any that
   // have been deleted. Each fetch is raced against a 10-second timeout so a
   // single hanging API call cannot block startup indefinitely.
   const CHANNEL_FETCH_TIMEOUT_MS = 10_000;
-  const threadPromises = store.threads.map(async (thread) => {
+  const threadPromises = [...threadRepository.getAll()].map(async (thread) => {
     const cachedChannel = client.channels.cache.get(thread.id) as
       | ThreadChannel
       | undefined;
@@ -60,15 +60,15 @@ export async function handleClientReady(client: Client) {
     }
   });
   const threadPromisesResults = await Promise.all(threadPromises);
-  store.threads = threadPromisesResults.filter(
-    (thread) => thread !== undefined,
-  ) as Thread[];
+  threadRepository.loadThreads(
+    threadPromisesResults.filter((thread) => thread !== undefined) as Thread[],
+  );
 
-  logger.info(`Issues loaded : ${store.threads.length}`);
+  logger.info(`Issues loaded : ${threadRepository.getAll().length}`);
 
   try {
     const forum = (await client.channels.fetch(config.DISCORD_CHANNEL_ID)) as ForumChannel;
-    store.availableTags = forum.availableTags;
+    threadRepository.setAvailableTags(forum.availableTags);
 
     // Reconcile Discord thread states with GitHub on startup.
     // Archive any Discord threads that are still open but whose GitHub issue is closed.
@@ -79,7 +79,7 @@ export async function handleClientReady(client: Client) {
     let reconciled = 0;
     let orphaned = 0;
     for (const [threadId, channel] of activeThreads.threads) {
-      const storeThread = store.threads.find((t) => t.id === threadId);
+      const storeThread = threadRepository.findByDiscordId(threadId);
       if (storeThread?.archived && !channel.archived) {
         // storeThread.archived is already true (guaranteed by the condition above);
         // the assignment is intentionally omitted to avoid a misleading no-op.
@@ -111,7 +111,7 @@ export async function handleClientReady(client: Client) {
             // createIssue catches internally — only add to store if the issue was
             // actually created (thread.number is set on success).
             if (thread.number) {
-              store.threads.push(thread);
+              threadRepository.addThread(thread);
               orphaned++;
             }
           }
@@ -136,7 +136,7 @@ export async function handleThreadCreate(params: AnyThreadChannel) {
 
   const { id, name, appliedTags } = params;
 
-  store.threads.push({
+  threadRepository.addThread({
     id,
     appliedTags,
     title: name,
@@ -152,7 +152,7 @@ export async function handleChannelUpdate(
   if (params.id !== config.DISCORD_CHANNEL_ID) return;
 
   if (params.type === 15) {
-    store.availableTags = params.availableTags;
+    threadRepository.setAvailableTags(params.availableTags);
   }
 }
 
@@ -160,14 +160,14 @@ export async function handleThreadUpdate(params: AnyThreadChannel) {
   if (params.parentId !== config.DISCORD_CHANNEL_ID) return;
 
   const { id, archived, locked } = params.members.thread;
-  const thread = store.threads.find((item) => item.id === id);
+  const thread = threadRepository.findByDiscordId(id);
   if (!thread) return;
 
   if (thread.locked !== locked && !thread.lockLocking) {
     if (thread.archived) {
-      thread.lockArchiving = true;
+      threadRepository.updateThread(thread.id, { lockArchiving: true });
     }
-    thread.locked = locked;
+    threadRepository.updateThread(thread.id, { locked });
     locked ? lockIssue(thread) : unlockIssue(thread);
   }
   if (thread.archived !== archived) {
@@ -175,12 +175,12 @@ export async function handleThreadUpdate(params: AnyThreadChannel) {
       // timeout for fixing discord archived post locking
       if (thread.lockArchiving) {
         if (archived) {
-          thread.lockArchiving = false;
+          threadRepository.updateThread(thread.id, { lockArchiving: false });
         }
-        thread.lockLocking = false;
+        threadRepository.updateThread(thread.id, { lockLocking: false });
         return;
       }
-      thread.archived = archived;
+      threadRepository.updateThread(thread.id, { archived });
       archived ? closeIssue(thread) : openIssue(thread);
     }, 500);
   }
@@ -191,7 +191,7 @@ export async function handleMessageCreate(params: Message) {
 
   if (author.bot) return;
 
-  const thread = store.threads.find((thread) => thread.id === channelId);
+  const thread = threadRepository.findByDiscordId(channelId);
 
   if (!thread) return;
 
@@ -204,7 +204,7 @@ export async function handleMessageCreate(params: Message) {
 
 export async function handleMessageDelete(params: Message | PartialMessage) {
   const { channelId, id } = params;
-  const thread = store.threads.find((i) => i.id === channelId);
+  const thread = threadRepository.findByDiscordId(channelId);
   if (!thread) return;
 
   const commentIndex = thread.comments.findIndex((i) => i.id === id);
@@ -217,7 +217,7 @@ export async function handleMessageDelete(params: Message | PartialMessage) {
 export async function handleThreadDelete(params: AnyThreadChannel) {
   if (params.parentId !== config.DISCORD_CHANNEL_ID) return;
 
-  const thread = store.threads.find((item) => item.id === params.id);
+  const thread = threadRepository.findByDiscordId(params.id);
   if (!thread) return;
 
   deleteIssue(thread);

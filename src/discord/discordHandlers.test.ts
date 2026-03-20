@@ -19,7 +19,7 @@ import {
   handleThreadDelete,
   handleChannelUpdate,
 } from './discordHandlers';
-import { store } from '../store';
+import { threadRepository } from '../store';
 import { Thread } from '../interfaces';
 
 // Mock logger
@@ -62,8 +62,7 @@ vi.mock('../config', () => ({
 describe('Discord Handlers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    store.threads = [];
-    store.availableTags = [];
+    threadRepository.clear();
   });
 
   describe('handleClientReady', () => {
@@ -260,7 +259,7 @@ describe('Discord Handlers', () => {
         expect.objectContaining({ id: 'orphaned-thread', title: 'Orphaned Thread' }),
         mockStarterMessage,
       );
-      expect(store.threads.find((t) => t.id === 'orphaned-thread')).toBeDefined();
+      expect(threadRepository.findByDiscordId('orphaned-thread')).toBeDefined();
     });
 
     it('skips orphaned thread recovery when starter message is from a bot', async () => {
@@ -302,7 +301,7 @@ describe('Discord Handlers', () => {
 
       // Assert — bot-originated thread not added or issued
       expect(createIssue).not.toHaveBeenCalled();
-      expect(store.threads.find((t) => t.id === 'bot-thread')).toBeUndefined();
+      expect(threadRepository.findByDiscordId('bot-thread')).toBeUndefined();
     });
 
     it('does not add orphaned thread to store when createIssue fails to set thread.number', async () => {
@@ -338,7 +337,7 @@ describe('Discord Handlers', () => {
       await handleClientReady(mockClient);
 
       // Assert — thread not added to store because GitHub issue was not created
-      expect(store.threads.find((t) => t.id === 'orphaned-thread')).toBeUndefined();
+      expect(threadRepository.findByDiscordId('orphaned-thread')).toBeUndefined();
     });
 
     it('skips orphaned thread recovery when fetchStarterMessage returns null', async () => {
@@ -369,7 +368,7 @@ describe('Discord Handlers', () => {
 
       // Assert
       expect(createIssue).not.toHaveBeenCalled();
-      expect(store.threads.find((t) => t.id === 'orphaned-thread')).toBeUndefined();
+      expect(threadRepository.findByDiscordId('orphaned-thread')).toBeUndefined();
     });
 
     it('continues recovering remaining orphaned threads when one fetchStarterMessage throws', async () => {
@@ -414,7 +413,7 @@ describe('Discord Handlers', () => {
 
       // Assert — thread-b recovered despite thread-a failing
       expect(createIssue).toHaveBeenCalledTimes(1);
-      expect(store.threads.find((t) => t.id === 'thread-b')).toBeDefined();
+      expect(threadRepository.findByDiscordId('thread-b')).toBeDefined();
     });
 
     it('excludes a thread from the store when its channel fetch times out', async () => {
@@ -455,8 +454,8 @@ describe('Discord Handlers', () => {
       vi.useRealTimers();
 
       // Assert — slow thread excluded; ok thread retained
-      expect(store.threads.find((t) => t.id === 'thread-slow')).toBeUndefined();
-      expect(store.threads.find((t) => t.id === 'thread-ok')).toBeDefined();
+      expect(threadRepository.findByDiscordId('thread-slow')).toBeUndefined();
+      expect(threadRepository.findByDiscordId('thread-ok')).toBeDefined();
     });
   });
 
@@ -474,8 +473,8 @@ describe('Discord Handlers', () => {
       await handleThreadCreate(mockThread);
 
       // Assert
-      expect(store.threads).toHaveLength(1);
-      expect(store.threads[0]).toMatchObject({
+      expect(threadRepository.getAll()).toHaveLength(1);
+      expect(threadRepository.getAll()[0]).toMatchObject({
         id: 'thread-1',
         title: 'New Thread',
         appliedTags: ['tag-1', 'tag-2'],
@@ -498,7 +497,7 @@ describe('Discord Handlers', () => {
       await handleThreadCreate(mockThread);
 
       // Assert
-      expect(store.threads).toHaveLength(0);
+      expect(threadRepository.getAll()).toHaveLength(0);
     });
 
     it('should handle thread with no applied tags', async () => {
@@ -514,7 +513,7 @@ describe('Discord Handlers', () => {
       await handleThreadCreate(mockThread);
 
       // Assert
-      expect(store.threads[0].appliedTags).toHaveLength(0);
+      expect(threadRepository.getAll()[0].appliedTags).toHaveLength(0);
     });
   });
 
@@ -535,8 +534,8 @@ describe('Discord Handlers', () => {
       await handleChannelUpdate(mockChannel);
 
       // Assert
-      expect(store.availableTags).toHaveLength(2);
-      expect(store.availableTags).toEqual(mockTags);
+      expect([...threadRepository.getAvailableTags()]).toHaveLength(2);
+      expect([...threadRepository.getAvailableTags()]).toEqual(mockTags);
     });
 
     it('should ignore update for non-forum channels', async () => {
@@ -551,7 +550,7 @@ describe('Discord Handlers', () => {
       await handleChannelUpdate(mockChannel);
 
       // Assert
-      expect(store.availableTags).toHaveLength(0);
+      expect([...threadRepository.getAvailableTags()]).toHaveLength(0);
     });
 
     it('should ignore update for channels with incorrect id', async () => {
@@ -566,7 +565,7 @@ describe('Discord Handlers', () => {
       await handleChannelUpdate(mockChannel);
 
       // Assert
-      expect(store.availableTags).toHaveLength(0);
+      expect([...threadRepository.getAvailableTags()]).toHaveLength(0);
     });
   });
 
@@ -586,7 +585,7 @@ describe('Discord Handlers', () => {
 
       // Assert - should not create issue or comment
       // (verified by checking no state changes)
-      expect(store.threads).toHaveLength(0);
+      expect(threadRepository.getAll()).toHaveLength(0);
     });
 
     it('should skip message in thread not in store', async () => {
@@ -603,21 +602,19 @@ describe('Discord Handlers', () => {
       await handleMessageCreate(mockMessage);
 
       // Assert
-      expect(store.threads).toHaveLength(0);
+      expect(threadRepository.getAll()).toHaveLength(0);
     });
 
     it('should skip message when thread not found', async () => {
       // Arrange
-      store.threads = [
-        {
-          id: 'thread-1',
-          title: 'Test',
-          appliedTags: [],
-          comments: [],
-          archived: false,
-          locked: false,
-        },
-      ];
+      threadRepository.addThread({
+        id: 'thread-1',
+        title: 'Test',
+        appliedTags: [],
+        comments: [],
+        archived: false,
+        locked: false,
+      });
       const mockMessage = {
         channelId: 'thread-2',
         author: {
@@ -630,7 +627,7 @@ describe('Discord Handlers', () => {
       await handleMessageCreate(mockMessage);
 
       // Assert
-      expect(store.threads).toHaveLength(1);
+      expect(threadRepository.getAll()).toHaveLength(1);
     });
   });
 
@@ -646,21 +643,19 @@ describe('Discord Handlers', () => {
       await handleMessageDelete(mockMessage);
 
       // Assert
-      expect(store.threads).toHaveLength(0);
+      expect(threadRepository.getAll()).toHaveLength(0);
     });
 
     it('should skip deletion when comment not found in thread', async () => {
       // Arrange
-      store.threads = [
-        {
-          id: 'thread-1',
-          title: 'Test',
-          appliedTags: [],
-          comments: [],
-          archived: false,
-          locked: false,
-        },
-      ];
+      threadRepository.addThread({
+        id: 'thread-1',
+        title: 'Test',
+        appliedTags: [],
+        comments: [],
+        archived: false,
+        locked: false,
+      });
       const mockMessage = {
         channelId: 'thread-1',
         id: 'unknown-msg-id',
@@ -670,24 +665,22 @@ describe('Discord Handlers', () => {
       await handleMessageDelete(mockMessage);
 
       // Assert
-      expect(store.threads[0].comments).toHaveLength(0);
+      expect(threadRepository.getAll()[0].comments).toHaveLength(0);
     });
 
     it('should remove comment from thread when found', async () => {
       // Arrange
-      store.threads = [
-        {
-          id: 'thread-1',
-          title: 'Test',
-          appliedTags: [],
-          comments: [
-            { id: 'msg-1', git_id: 1 },
-            { id: 'msg-2', git_id: 2 },
-          ],
-          archived: false,
-          locked: false,
-        },
-      ];
+      threadRepository.addThread({
+        id: 'thread-1',
+        title: 'Test',
+        appliedTags: [],
+        comments: [
+          { id: 'msg-1', git_id: 1 },
+          { id: 'msg-2', git_id: 2 },
+        ],
+        archived: false,
+        locked: false,
+      });
       const mockMessage = {
         channelId: 'thread-1',
         id: 'msg-1',
@@ -697,24 +690,22 @@ describe('Discord Handlers', () => {
       await handleMessageDelete(mockMessage);
 
       // Assert
-      expect(store.threads[0].comments).toHaveLength(1);
-      expect(store.threads[0].comments[0].id).toBe('msg-2');
+      expect(threadRepository.getAll()[0].comments).toHaveLength(1);
+      expect(threadRepository.getAll()[0].comments[0].id).toBe('msg-2');
     });
   });
 
   describe('handleThreadDelete', () => {
     it('should ignore thread delete for incorrect forum channel', async () => {
       // Arrange
-      store.threads = [
-        {
-          id: 'thread-1',
-          title: 'Test',
-          appliedTags: [],
-          comments: [],
-          archived: false,
-          locked: false,
-        },
-      ];
+      threadRepository.addThread({
+        id: 'thread-1',
+        title: 'Test',
+        appliedTags: [],
+        comments: [],
+        archived: false,
+        locked: false,
+      });
       const mockThread = {
         id: 'thread-1',
         parentId: 'different-channel-id',
@@ -724,7 +715,7 @@ describe('Discord Handlers', () => {
       await handleThreadDelete(mockThread);
 
       // Assert
-      expect(store.threads).toHaveLength(1);
+      expect(threadRepository.getAll()).toHaveLength(1);
     });
 
     it('should skip deletion when thread not found in store', async () => {
@@ -738,23 +729,21 @@ describe('Discord Handlers', () => {
       await handleThreadDelete(mockThread);
 
       // Assert
-      expect(store.threads).toHaveLength(0);
+      expect(threadRepository.getAll()).toHaveLength(0);
     });
   });
 
   describe('handleThreadUpdate', () => {
     it('should ignore thread update for incorrect forum channel', async () => {
       // Arrange
-      store.threads = [
-        {
-          id: 'thread-1',
-          title: 'Test',
-          appliedTags: [],
-          comments: [],
-          archived: false,
-          locked: false,
-        },
-      ];
+      threadRepository.addThread({
+        id: 'thread-1',
+        title: 'Test',
+        appliedTags: [],
+        comments: [],
+        archived: false,
+        locked: false,
+      });
       const mockThread = {
         id: 'thread-1',
         parentId: 'different-channel-id',
@@ -771,7 +760,7 @@ describe('Discord Handlers', () => {
       await handleThreadUpdate(mockThread);
 
       // Assert
-      expect(store.threads[0].archived).toBe(false);
+      expect(threadRepository.getAll()[0].archived).toBe(false);
     });
 
     it('should skip update when thread not found in store', async () => {
@@ -792,21 +781,19 @@ describe('Discord Handlers', () => {
       await handleThreadUpdate(mockThread);
 
       // Assert
-      expect(store.threads).toHaveLength(0);
+      expect(threadRepository.getAll()).toHaveLength(0);
     });
 
     it('should update thread locked state when changed', async () => {
       // Arrange
-      store.threads = [
-        {
-          id: 'thread-1',
-          title: 'Test',
-          appliedTags: [],
-          comments: [],
-          archived: false,
-          locked: false,
-        },
-      ];
+      threadRepository.addThread({
+        id: 'thread-1',
+        title: 'Test',
+        appliedTags: [],
+        comments: [],
+        archived: false,
+        locked: false,
+      });
       const mockThread = {
         id: 'thread-1',
         parentId: 'forum-channel-id',
@@ -823,21 +810,19 @@ describe('Discord Handlers', () => {
       await handleThreadUpdate(mockThread);
 
       // Assert
-      expect(store.threads[0].locked).toBe(true);
+      expect(threadRepository.getAll()[0].locked).toBe(true);
     });
 
     it('should update thread archived state when changed', async () => {
       // Arrange
-      store.threads = [
-        {
-          id: 'thread-1',
-          title: 'Test',
-          appliedTags: [],
-          comments: [],
-          archived: false,
-          locked: false,
-        },
-      ];
+      threadRepository.addThread({
+        id: 'thread-1',
+        title: 'Test',
+        appliedTags: [],
+        comments: [],
+        archived: false,
+        locked: false,
+      });
       const mockThread = {
         id: 'thread-1',
         parentId: 'forum-channel-id',
@@ -855,22 +840,20 @@ describe('Discord Handlers', () => {
 
       // Assert
       // Wrapped in setTimeout, so we need to verify async behavior
-      expect(store.threads[0].archived).toBe(false); // initially false
+      expect(threadRepository.getAll()[0].archived).toBe(false); // initially false
     });
 
     it('should not update lock state when lockLocking flag is set', async () => {
       // Arrange
-      store.threads = [
-        {
-          id: 'thread-1',
-          title: 'Test',
-          appliedTags: [],
-          comments: [],
-          archived: false,
-          locked: false,
-          lockLocking: true,
-        },
-      ];
+      threadRepository.addThread({
+        id: 'thread-1',
+        title: 'Test',
+        appliedTags: [],
+        comments: [],
+        archived: false,
+        locked: false,
+        lockLocking: true,
+      });
       const mockThread = {
         id: 'thread-1',
         parentId: 'forum-channel-id',
@@ -887,7 +870,7 @@ describe('Discord Handlers', () => {
       await handleThreadUpdate(mockThread);
 
       // Assert
-      expect(store.threads[0].locked).toBe(false);
+      expect(threadRepository.getAll()[0].locked).toBe(false);
     });
   });
 

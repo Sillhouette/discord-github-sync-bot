@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { extractImageUrls, stripImageMarkdown, truncateContent, createThread, createComment, updateComment, evictForumCache, archiveThread, unarchiveThread, lockThread, unlockThread, deleteThread } from "./discordActions";
+import { threadRepository } from "../store";
 
 vi.mock("../config", () => ({
   config: {
@@ -22,8 +23,6 @@ vi.mock("../logger", () => ({
   Triggerer: { Github: "github" },
   getDiscordUrl: vi.fn(),
 }));
-
-vi.mock("../store", () => ({ store: { threads: [], deleteThread: vi.fn() } }));
 
 vi.mock("../commentMap", () => ({ saveCommentMapping: vi.fn() }));
 
@@ -286,8 +285,7 @@ describe("truncateContent", () => {
 describe("createThread", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
-    const { store } = await import("../store");
-    store.threads = [];
+    threadRepository.clear();
     const discordModule = await import("./discord");
     (discordModule.default.channels.cache as Map<string, unknown>).clear();
   });
@@ -297,19 +295,16 @@ describe("createThread", () => {
     const mockCreate = vi.fn().mockResolvedValue({ id: "thread-fmt-1" });
     const mockForum = { threads: { create: mockCreate } };
 
-    const { store } = await import("../store");
     const discordModule = await import("./discord");
 
-    store.threads = [
-      {
-        id: "thread-fmt-1",
-        title: "Test issue",
-        appliedTags: [],
-        comments: [],
-        archived: false,
-        locked: false,
-      },
-    ];
+    threadRepository.addThread({
+      id: "thread-fmt-1",
+      title: "Test issue",
+      appliedTags: [],
+      comments: [],
+      archived: false,
+      locked: false,
+    });
     (discordModule.default.channels.cache as Map<string, unknown>).set(
       "test-channel-id",
       mockForum,
@@ -335,19 +330,16 @@ describe("createThread", () => {
     const mockCreate = vi.fn().mockResolvedValue({ id: "thread-trunc-long-1" });
     const mockForum = { threads: { create: mockCreate } };
 
-    const { store } = await import("../store");
     const discordModule = await import("./discord");
 
-    store.threads = [
-      {
-        id: "thread-trunc-long-1",
-        title: "Long issue",
-        appliedTags: [],
-        comments: [],
-        archived: false,
-        locked: false,
-      },
-    ];
+    threadRepository.addThread({
+      id: "thread-trunc-long-1",
+      title: "Long issue",
+      appliedTags: [],
+      comments: [],
+      archived: false,
+      locked: false,
+    });
     (discordModule.default.channels.cache as Map<string, unknown>).set(
       "test-channel-id",
       mockForum,
@@ -373,8 +365,7 @@ describe("createThread", () => {
 describe("createComment", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
-    const { store } = await import("../store");
-    store.threads = [];
+    threadRepository.clear();
     const discordModule = await import("./discord");
     (discordModule.default.channels.cache as Map<string, unknown>).clear();
   });
@@ -391,21 +382,18 @@ describe("createComment", () => {
       },
     };
 
-    const { store } = await import("../store");
     const discordModule = await import("./discord");
     const { saveCommentMapping } = await import("../commentMap");
 
-    store.threads = [
-      {
-        id: "thread-create-1",
-        title: "Test",
-        appliedTags: [],
-        node_id: "gh-node-create-1",
-        comments: [],
-        archived: false,
-        locked: false,
-      },
-    ];
+    threadRepository.addThread({
+      id: "thread-create-1",
+      title: "Test",
+      appliedTags: [],
+      node_id: "gh-node-create-1",
+      comments: [],
+      archived: false,
+      locked: false,
+    });
     (discordModule.default.channels.cache as Map<string, unknown>).set(
       "thread-create-1",
       mockChannel,
@@ -442,20 +430,17 @@ describe("createComment", () => {
       },
     };
 
-    const { store } = await import("../store");
     const discordModule = await import("./discord");
 
-    store.threads = [
-      {
-        id: "thread-reuse-1",
-        title: "Reuse test",
-        appliedTags: [],
-        node_id: "gh-node-reuse-1",
-        comments: [],
-        archived: false,
-        locked: false,
-      },
-    ];
+    threadRepository.addThread({
+      id: "thread-reuse-1",
+      title: "Reuse test",
+      appliedTags: [],
+      node_id: "gh-node-reuse-1",
+      comments: [],
+      archived: false,
+      locked: false,
+    });
     (discordModule.default.channels.cache as Map<string, unknown>).set(
       "thread-reuse-1",
       mockChannel,
@@ -488,20 +473,17 @@ describe("createComment", () => {
       },
     };
 
-    const { store } = await import("../store");
     const discordModule = await import("./discord");
 
-    store.threads = [
-      {
-        id: "thread-trunc-1",
-        title: "Test",
-        appliedTags: [],
-        node_id: "gh-node-trunc-1",
-        comments: [],
-        archived: false,
-        locked: false,
-      },
-    ];
+    threadRepository.addThread({
+      id: "thread-trunc-1",
+      title: "Test",
+      appliedTags: [],
+      node_id: "gh-node-trunc-1",
+      comments: [],
+      archived: false,
+      locked: false,
+    });
     (discordModule.default.channels.cache as Map<string, unknown>).set(
       "thread-trunc-1",
       mockChannel,
@@ -564,20 +546,17 @@ describe("createComment", () => {
       },
     };
 
-    const { store } = await import("../store");
     const discordModule = await import("./discord");
 
-    store.threads = [
-      {
-        id: "thread-race-1",
-        title: "Race test",
-        appliedTags: [],
-        node_id: "gh-node-race-1",
-        comments: [],
-        archived: false,
-        locked: false,
-      },
-    ];
+    threadRepository.addThread({
+      id: "thread-race-1",
+      title: "Race test",
+      appliedTags: [],
+      node_id: "gh-node-race-1",
+      comments: [],
+      archived: false,
+      locked: false,
+    });
     (discordModule.default.channels.cache as Map<string, unknown>).set(
       "thread-race-1",
       mockChannel,
@@ -620,8 +599,7 @@ describe("createComment", () => {
 describe("updateComment", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
-    const { store } = await import("../store");
-    store.threads = [];
+    threadRepository.clear();
     const discordModule = await import("./discord");
     (discordModule.default.channels.cache as Map<string, unknown>).clear();
   });
@@ -643,20 +621,17 @@ describe("updateComment", () => {
       parent: { fetchWebhooks: mockFetchWebhooks },
     };
 
-    const { store } = await import("../store");
     const discordModule = await import("./discord");
 
-    store.threads = [
-      {
-        id: "thread-update-1",
-        title: "Test",
-        appliedTags: [],
-        node_id: "gh-node-update-1",
-        comments: [{ id: "discord-msg-edit-1", git_id: 55 }],
-        archived: false,
-        locked: false,
-      },
-    ];
+    threadRepository.addThread({
+      id: "thread-update-1",
+      title: "Test",
+      appliedTags: [],
+      node_id: "gh-node-update-1",
+      comments: [{ id: "discord-msg-edit-1", git_id: 55 }],
+      archived: false,
+      locked: false,
+    });
     (discordModule.default.channels.cache as Map<string, unknown>).set(
       "thread-update-1",
       mockChannel,
@@ -699,20 +674,17 @@ describe("updateComment", () => {
       fetchWebhooks: vi.fn(),
     };
 
-    const { store } = await import("../store");
     const discordModule = await import("./discord");
 
-    store.threads = [
-      {
-        id: "thread-warm-1",
-        title: "Test",
-        appliedTags: [],
-        node_id: "gh-node-warm-1",
-        comments: [],
-        archived: false,
-        locked: false,
-      },
-    ];
+    threadRepository.addThread({
+      id: "thread-warm-1",
+      title: "Test",
+      appliedTags: [],
+      node_id: "gh-node-warm-1",
+      comments: [],
+      archived: false,
+      locked: false,
+    });
     (discordModule.default.channels.cache as Map<string, unknown>).set(
       "thread-warm-1",
       mockChannel,
@@ -754,21 +726,18 @@ describe("updateComment", () => {
       parent: { fetchWebhooks: mockFetchWebhooks },
     };
 
-    const { store } = await import("../store");
     const discordModule = await import("./discord");
     const { logger } = await import("../logger");
 
-    store.threads = [
-      {
-        id: "thread-empty-hooks-1",
-        title: "Test",
-        appliedTags: [],
-        node_id: "gh-node-empty-hooks-1",
-        comments: [{ id: "discord-msg-no-hook", git_id: 88 }],
-        archived: false,
-        locked: false,
-      },
-    ];
+    threadRepository.addThread({
+      id: "thread-empty-hooks-1",
+      title: "Test",
+      appliedTags: [],
+      node_id: "gh-node-empty-hooks-1",
+      comments: [{ id: "discord-msg-no-hook", git_id: 88 }],
+      archived: false,
+      locked: false,
+    });
     (discordModule.default.channels.cache as Map<string, unknown>).set(
       "thread-empty-hooks-1",
       mockChannel,
@@ -803,20 +772,17 @@ describe("updateComment", () => {
       parent: { fetchWebhooks: vi.fn().mockResolvedValue(mockHooks) },
     };
 
-    const { store } = await import("../store");
     const discordModule = await import("./discord");
 
-    store.threads = [
-      {
-        id: "thread-trunc-update-1",
-        title: "Test",
-        appliedTags: [],
-        node_id: "gh-node-trunc-update-1",
-        comments: [{ id: "discord-msg-trunc-edit-1", git_id: 101 }],
-        archived: false,
-        locked: false,
-      },
-    ];
+    threadRepository.addThread({
+      id: "thread-trunc-update-1",
+      title: "Test",
+      appliedTags: [],
+      node_id: "gh-node-trunc-update-1",
+      comments: [{ id: "discord-msg-trunc-edit-1", git_id: 101 }],
+      archived: false,
+      locked: false,
+    });
     (discordModule.default.channels.cache as Map<string, unknown>).set(
       "thread-trunc-update-1",
       mockChannel,
@@ -849,20 +815,17 @@ describe("evictForumCache", () => {
       },
     };
 
-    const { store } = await import("../store");
     const discordModule = await import("./discord");
 
-    store.threads = [
-      {
-        id: "thread-evict-1",
-        title: "Evict test",
-        appliedTags: [],
-        node_id: "gh-evict-1",
-        comments: [],
-        archived: false,
-        locked: false,
-      },
-    ];
+    threadRepository.addThread({
+      id: "thread-evict-1",
+      title: "Evict test",
+      appliedTags: [],
+      node_id: "gh-evict-1",
+      comments: [],
+      archived: false,
+      locked: false,
+    });
     (discordModule.default.channels.cache as Map<string, unknown>).set(
       "thread-evict-1",
       mockChannel,
@@ -908,20 +871,17 @@ describe("evictForumCache", () => {
       },
     };
 
-    const { store } = await import("../store");
     const discordModule = await import("./discord");
 
-    store.threads = [
-      {
-        id: "thread-settle-1",
-        title: "Settle test",
-        appliedTags: [],
-        node_id: "gh-settle-1",
-        comments: [],
-        archived: false,
-        locked: false,
-      },
-    ];
+    threadRepository.addThread({
+      id: "thread-settle-1",
+      title: "Settle test",
+      appliedTags: [],
+      node_id: "gh-settle-1",
+      comments: [],
+      archived: false,
+      locked: false,
+    });
     (discordModule.default.channels.cache as Map<string, unknown>).set(
       "thread-settle-1",
       mockChannel,
@@ -958,20 +918,16 @@ describe("evictForumCache", () => {
 describe("thread state actions error handling", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
-    const { store } = await import("../store");
-    store.threads = [];
+    threadRepository.clear();
     const discordModule = await import("./discord");
     (discordModule.default.channels.cache as Map<string, unknown>).clear();
   });
 
   it("archiveThread logs and does not throw when setArchived rejects", async () => {
     // Arrange
-    const { store } = await import("../store");
     const discordModule = await import("./discord");
     const { logger } = await import("../logger");
-    store.threads = [
-      { id: "ch-err-archive", title: "T", appliedTags: [], comments: [], archived: false, locked: false, node_id: "gh-err-archive" },
-    ];
+    threadRepository.addThread({ id: "ch-err-archive", title: "T", appliedTags: [], comments: [], archived: false, locked: false, node_id: "gh-err-archive" });
     const mockChannel = { archived: false, setArchived: vi.fn().mockRejectedValue(new Error("forbidden")) };
     (discordModule.default.channels.cache as Map<string, unknown>).set("ch-err-archive", mockChannel);
 
@@ -984,12 +940,9 @@ describe("thread state actions error handling", () => {
 
   it("unarchiveThread logs and does not throw when setArchived rejects", async () => {
     // Arrange
-    const { store } = await import("../store");
     const discordModule = await import("./discord");
     const { logger } = await import("../logger");
-    store.threads = [
-      { id: "ch-err-unarchive", title: "T", appliedTags: [], comments: [], archived: true, locked: false, node_id: "gh-err-unarchive" },
-    ];
+    threadRepository.addThread({ id: "ch-err-unarchive", title: "T", appliedTags: [], comments: [], archived: true, locked: false, node_id: "gh-err-unarchive" });
     const mockChannel = { archived: true, setArchived: vi.fn().mockRejectedValue(new Error("forbidden")) };
     (discordModule.default.channels.cache as Map<string, unknown>).set("ch-err-unarchive", mockChannel);
 
@@ -1002,12 +955,9 @@ describe("thread state actions error handling", () => {
 
   it("lockThread logs and does not throw when setLocked rejects", async () => {
     // Arrange
-    const { store } = await import("../store");
     const discordModule = await import("./discord");
     const { logger } = await import("../logger");
-    store.threads = [
-      { id: "ch-err-lock", title: "T", appliedTags: [], comments: [], archived: false, locked: false, node_id: "gh-err-lock" },
-    ];
+    threadRepository.addThread({ id: "ch-err-lock", title: "T", appliedTags: [], comments: [], archived: false, locked: false, node_id: "gh-err-lock" });
     const mockChannel = { archived: false, locked: false, setLocked: vi.fn().mockRejectedValue(new Error("rate limited")) };
     (discordModule.default.channels.cache as Map<string, unknown>).set("ch-err-lock", mockChannel);
 
@@ -1020,12 +970,9 @@ describe("thread state actions error handling", () => {
 
   it("unlockThread logs and does not throw when setLocked rejects", async () => {
     // Arrange
-    const { store } = await import("../store");
     const discordModule = await import("./discord");
     const { logger } = await import("../logger");
-    store.threads = [
-      { id: "ch-err-unlock", title: "T", appliedTags: [], comments: [], archived: false, locked: true, node_id: "gh-err-unlock" },
-    ];
+    threadRepository.addThread({ id: "ch-err-unlock", title: "T", appliedTags: [], comments: [], archived: false, locked: true, node_id: "gh-err-unlock" });
     const mockChannel = { archived: false, locked: true, setLocked: vi.fn().mockRejectedValue(new Error("rate limited")) };
     (discordModule.default.channels.cache as Map<string, unknown>).set("ch-err-unlock", mockChannel);
 
@@ -1038,12 +985,9 @@ describe("thread state actions error handling", () => {
 
   it("deleteThread logs and does not throw when channel.delete rejects", async () => {
     // Arrange
-    const { store } = await import("../store");
     const discordModule = await import("./discord");
     const { logger } = await import("../logger");
-    store.threads = [
-      { id: "ch-err-delete", title: "T", appliedTags: [], comments: [], archived: false, locked: false, node_id: "gh-err-delete" },
-    ];
+    threadRepository.addThread({ id: "ch-err-delete", title: "T", appliedTags: [], comments: [], archived: false, locked: false, node_id: "gh-err-delete" });
     const mockChannel = { delete: vi.fn().mockRejectedValue(new Error("missing permissions")) };
     (discordModule.default.channels.cache as Map<string, unknown>).set("ch-err-delete", mockChannel);
 

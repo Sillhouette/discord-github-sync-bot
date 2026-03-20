@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { Request } from "express";
 import { handleCreated, handleEdited, handleDeleted } from "./githubHandlers";
-import { store } from "../store";
+import { threadRepository } from "../store";
 
 // Mock logger to prevent output during tests
 vi.mock("../logger", () => ({
@@ -49,9 +49,8 @@ vi.mock("../config", () => ({
 describe("handleCreated", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    store.threads = [];
-    store.availableTags = [];
-  });
+    threadRepository.clear();
+      });
 
   it("should skip comments that contain a Discord URL (bot-originated)", async () => {
     // Arrange
@@ -105,9 +104,8 @@ describe("handleCreated", () => {
 describe("handleEdited", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    store.threads = [];
-    store.availableTags = [];
-  });
+    threadRepository.clear();
+      });
 
   it("should skip when req.body.comment is absent (issues.edited event)", async () => {
     // Arrange
@@ -150,7 +148,7 @@ describe("handleEdited", () => {
   it("should skip when thread is not found in store", async () => {
     // Arrange
     const { updateComment } = await import("../discord/discordActions");
-    store.threads = [];
+    threadRepository.clear();
     const req = {
       body: {
         comment: { id: 123, body: "Updated comment text", user: { login: "github-user" } },
@@ -168,17 +166,15 @@ describe("handleEdited", () => {
   it("should skip when comment not found in thread", async () => {
     // Arrange
     const { updateComment } = await import("../discord/discordActions");
-    store.threads = [
-      {
-        id: "discord-thread-1",
-        title: "Test",
-        appliedTags: [],
-        comments: [{ id: "discord-msg-1", git_id: 999 }],
-        archived: false,
-        locked: false,
-        node_id: "issue-node-1",
-      },
-    ];
+    threadRepository.addThread({
+      id: "discord-thread-1",
+      title: "Test",
+      appliedTags: [],
+      comments: [{ id: "discord-msg-1", git_id: 999 }],
+      archived: false,
+      locked: false,
+      node_id: "issue-node-1",
+    });
     const req = {
       body: {
         comment: { id: 123, body: "Updated comment text", user: { login: "github-user" } },
@@ -196,17 +192,15 @@ describe("handleEdited", () => {
   it("should call updateComment with correct params when comment is found", async () => {
     // Arrange
     const { updateComment } = await import("../discord/discordActions");
-    store.threads = [
-      {
-        id: "discord-thread-1",
-        title: "Test",
-        appliedTags: [],
-        comments: [{ id: "discord-msg-42", git_id: 123 }],
-        archived: false,
-        locked: false,
-        node_id: "issue-node-1",
-      },
-    ];
+    threadRepository.addThread({
+      id: "discord-thread-1",
+      title: "Test",
+      appliedTags: [],
+      comments: [{ id: "discord-msg-42", git_id: 123 }],
+      archived: false,
+      locked: false,
+      node_id: "issue-node-1",
+    });
     const req = {
       body: {
         comment: { id: 123, body: "Updated comment text", user: { login: "github-user" } },
@@ -229,7 +223,7 @@ describe("handleEdited", () => {
 describe("handleDeleted", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    store.threads = [];
+    threadRepository.clear();
   });
 
   it("ignores the event when req.body.comment is present (issue_comment.deleted echo)", async () => {

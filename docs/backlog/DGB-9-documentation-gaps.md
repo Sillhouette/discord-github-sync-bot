@@ -9,6 +9,7 @@ appetite: small
 priority: P3
 target_project: discord-github-sync-bot
 author: architect
+depends_on: [DGB-2]
 tags: [documentation, interfaces, concurrency]
 acceptance_criteria:
   - id: AC-1
@@ -21,7 +22,7 @@ acceptance_criteria:
     description: enqueueWebhookTask has a JSDoc comment documenting the serial execution invariant, why prev.then(task, task) advances the queue on failure, and what the self-eviction pattern prevents
     status: pending
   - id: AC-4
-    description: The lockArchiving/lockLocking state machine (or its replacement from DGB-2) has a comment or inline state diagram documenting the 6 states and valid transitions
+    description: The archive+lock state machine implemented via lockingThreads: Set<string> (introduced by DGB-2) has a comment or inline state diagram in discordHandlers.ts documenting the 6 states, valid transitions, the 500ms setTimeout race window, and why the Set-based approach replaced the lockArchiving/lockLocking Thread fields
     status: pending
   - id: AC-5
     description: getIssueBody has a comment linking it to getDiscordInfoFromGithubBody — documenting that the format produced must match the regex used to parse it back
@@ -43,8 +44,10 @@ The webhook queue design is the most non-obvious part of the codebase. The exist
 - Why `prev.then(task, task)` passes the task as both fulfillment AND rejection handler — the queue must advance even when the previous task fails
 - What the self-eviction pattern prevents: unbounded `webhookQueue` Map growth when channels are no longer active
 
-**Lock/archive state machine (MEDIUM — diagnose rank 15)**
-`handleThreadUpdate` uses `thread.lockArchiving` and `thread.lockLocking` flags, combined with a `setTimeout(..., 500)`, to manage Discord's constraint that archived threads cannot be directly locked. This is a six-state implicit machine documented only by the comment "timeout for fixing discord archived post locking." The states, valid transitions, and why the 500ms delay exists are not recorded anywhere.
+**Archive+lock state machine (MEDIUM — diagnose rank 15)**
+`handleThreadUpdate` manages Discord's constraint that archived threads cannot be directly locked. DGB-2 replaces the `thread.lockArchiving` and `thread.lockLocking` fields with a `lockingThreads: Set<string>` in module scope, combined with a `setTimeout(..., 500)`. This remains a six-state implicit machine. The states, valid transitions, why the Set-based approach replaced Thread fields, and why the 500ms delay exists are not documented anywhere.
+
+> **Ordering:** This item depends on DGB-2. The state machine comment must describe the `lockingThreads` Set pattern, not the removed Thread fields. Do not deliver DGB-9 before DGB-2 is complete.
 
 ## Evidence
 
@@ -88,13 +91,15 @@ interface Thread {
  * prevent unbounded Map growth on inactive channels.
  */
 
-// discordHandlers.ts — state machine comment
+// discordHandlers.ts — state machine comment (reflects DGB-2's lockingThreads replacement)
 // Discord archive+lock state machine:
 // Discord prevents locking an archived thread directly. Workaround:
 //   [archived] → setArchived(false) → [active] → setLocked(x) → [locked/unlocked] → setArchived(true) → [archived+locked]
-// lockArchiving flag: prevents handleThreadUpdate from re-triggering on the intermediate setArchived(false)
-// lockLocking flag: prevents handleThreadUpdate from re-triggering on the setLocked call
-// 500ms timeout: Discord emits the archived event asynchronously; timeout absorbs the race
+// lockingThreads Set: tracks thread IDs currently in the unarchive→lock→rearchive sequence.
+//   handleThreadUpdate checks lockingThreads.has(threadId) to suppress re-entrancy during intermediate steps.
+//   Replaces the former lockArchiving/lockLocking boolean fields on Thread (removed in DGB-2).
+// 500ms timeout: Discord emits the archived event asynchronously; timeout absorbs the race condition
+//   between the setArchived(false) call and Discord firing the threadUpdate event for it.
 ```
 
 ## Risks & Assumptions

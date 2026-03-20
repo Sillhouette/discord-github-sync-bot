@@ -21,12 +21,9 @@ acceptance_criteria:
     description: typescript is upgraded from 5.4.x to 5.7.x
     status: pending
   - id: AC-4
-    description: pnpm audit --audit-level=high runs as a CI step before tests
-    status: pending
-  - id: AC-5
     description: All existing tests pass after dependency upgrades
     status: pending
-  - id: AC-6
+  - id: AC-5
     description: pnpm lint passes after upgrading ESLint and @typescript-eslint
     status: pending
 ---
@@ -46,28 +43,20 @@ ESLint v9 ships flat config (`eslint.config.js`). v8 uses the legacy `.eslintrc`
 **TypeScript 5.4 → 5.7 (MEDIUM — diagnose rank 12)**
 TS 5.7 includes improvements to type narrowing and control flow analysis that can catch errors 5.4 misses. Three minor versions behind is manageable now but grows as a gap.
 
-**No vulnerability scanning in CI (MEDIUM — diagnose rank 13)**
-The CI workflow runs only `pnpm install --frozen-lockfile` and `pnpm test`. The bot handles webhook payloads from external services and writes to Discord channels on behalf of users — a dependency with a known high-severity CVE would not be caught automatically.
-
 ## Evidence
 
 - `package.json` devDependencies: `@typescript-eslint/*` at `^6.21.0`, `eslint` at `^8.57.0`, `typescript` at `^5.4.5`
-- `.github/workflows/ci.yml`: no audit step
-- Diagnose report ranks 12, 13
+- Diagnose report rank 12
 
 ## Appetite & Boundaries
 
 - **Appetite:** Small (toolchain only; no production dependency changes)
-- **In scope:** The four dependency upgrades listed above; flat config migration for ESLint v9; pnpm audit CI step
+- **In scope:** The three dependency upgrades listed above; flat config migration for ESLint v9
+
+> **Note:** `pnpm audit --audit-level=high` in CI is owned by DGB-14 AC-6, which creates the CI workflow from scratch. DGB-8 does not need to create or modify the CI workflow — DGB-14 handles it. If DGB-14 has already landed, this item's scope is purely the toolchain upgrades (AC-1 through AC-3).
 - **No-gos:** Upgrading production dependencies (discord.js, octokit, express), changing CI provider, adding new lint rules beyond what v8 enables
 
 ## Solution Sketch
-
-```yaml
-# .github/workflows/ci.yml addition:
-- name: Audit dependencies
-  run: pnpm audit --audit-level=high
-```
 
 ESLint v9 migration replaces `.eslintrc.*` with `eslint.config.js`:
 ```javascript

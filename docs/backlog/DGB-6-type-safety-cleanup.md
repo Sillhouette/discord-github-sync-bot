@@ -30,9 +30,6 @@ acceptance_criteria:
     description: getDiscordInfoFromGithubBody returns { discordChannelId, discordMessageId } instead of { channelId, id }
     status: pending
   - id: AC-7
-    description: console.log in github.ts is replaced with logger.info
-    status: pending
-  - id: AC-8
     description: All existing tests continue to pass
     status: pending
 ---
@@ -55,22 +52,20 @@ A cluster of small, independent type-safety and convention issues that can be ad
 **Ambiguous return shape (CS-9)**
 `getDiscordInfoFromGithubBody` returns `{ channelId, id }` where `id` means Discord message ID. Throughout the rest of the codebase, `id` is used for various entity IDs and `git_id` for GitHub IDs. A caller cannot determine without reading the regex what `id` refers to.
 
-**console.log bypassing logger (diagnose item, CS-12)**
-`github.ts` line 84 uses `console.log` for the server startup message. All other logging goes through winston.
-
 ## Evidence
 
 - `src/discord/discordHandlers.ts` line 154: `params.type === 15`
 - `src/github/githubActions.ts` lines 171–182: `update()` return type
 - `src/logger.ts` lines 25–28: `Triggerer` missing `as const`
 - `src/github/githubActions.ts` lines 141–148: `{ channelId, id }` return shape
-- `src/github/github.ts` line 84: `console.log`
-- Diagnose item rank 2; Pass 2 findings CS-1, CS-8, CS-9, CS-10, CS-11, CS-12
+- Diagnose item rank 2; Pass 2 findings CS-1, CS-8, CS-9, CS-10, CS-11
+
+> **Note:** The `console.log` in `github.ts` (CS-12) is owned by DGB-3 AC-5, which already touches that file. It is excluded from this item's scope to avoid duplicate work.
 
 ## Appetite & Boundaries
 
 - **Appetite:** Small (each fix is 1–5 lines; all are isolated changes)
-- **In scope:** The six specific items listed in ACs above
+- **In scope:** The five specific items listed in ACs above
 - **No-gos:** Adding new lint rules, overhauling error handling architecture, changing log formatting
 
 ## Solution Sketch
@@ -93,8 +88,6 @@ export type TriggererValue = (typeof Triggerer)[keyof typeof Triggerer];
 // CS-9: githubActions.ts
 return { discordChannelId: channelId, discordMessageId: id };
 
-// CS-12: github.ts
-logger.info(`Server is running on port ${config.PORT}`);
 ```
 
 ## Risks & Assumptions

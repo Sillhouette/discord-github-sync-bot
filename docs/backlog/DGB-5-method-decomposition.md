@@ -58,6 +58,7 @@ The function switches on `contentType` with four branches. The fetch → buffer 
 - **Appetite:** Small (extraction only; no behavior change)
 - **In scope:** Extract named private functions from both methods; no change to logic or tests
 - **No-gos:** Changing startup orchestration behavior, changing attachment handling logic, moving functions to new files
+- **Ordering:** Must be delivered before DGB-10. DGB-10 renames `discordHandlers.ts` → `discord/eventHandlers.ts` and `githubActions.ts` → `github/port.ts`. If DGB-5 runs after DGB-10, the target files no longer exist under these names.
 
 ## Solution Sketch
 

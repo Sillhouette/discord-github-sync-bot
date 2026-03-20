@@ -9,7 +9,7 @@ appetite: medium
 priority: P2
 target_project: discord-github-sync-bot
 author: architect
-depends_on: [DGB-1, DGB-2, DGB-3, DGB-4]
+depends_on: [DGB-1, DGB-2, DGB-3, DGB-4, DGB-12]
 tags: [architecture, ddd, restructure, coupling]
 acceptance_criteria:
   - id: AC-1
@@ -41,6 +41,15 @@ acceptance_criteria:
     status: pending
   - id: AC-10
     description: tsconfig.json and vitest.config.ts path aliases or baseUrl are updated to reflect new structure
+    status: pending
+  - id: AC-11
+    description: No domain type or SyncService method signature uses the string "node_id" — the platform-neutral term "externalId" is used throughout src/domain/
+    status: pending
+  - id: AC-12
+    description: MessagingPort interface includes an optional impersonation capability (sendAs(identity, message)) that adapters may implement — Discord implements it, Teams/Slack stubs return the base send behavior
+    status: pending
+  - id: AC-13
+    description: SyncService has unit tests covering onThreadCreated, onMessagePosted, onIssueOpened, and onCommentCreated with mock MessagingPort and VcsPort — these are the most critical new functions in the restructure and must have test coverage before the item is considered done
     status: pending
 ---
 
@@ -107,38 +116,77 @@ src/
 
 ## The Key Design Decision: syncService Interface
 
-Before implementing, the syncService public interface must be defined. It is the seam between the domain and the adapters:
+Before implementing, the syncService public interface must be defined. It is the seam between the domain and the adapters.
+
+**Vocabulary note (navigator decision 2026-03-19):** Domain types and SyncService method signatures use `externalId` (not `node_id`). `node_id` is GitHub GraphQL vocabulary. `externalId` is the platform-neutral term — each VCS adapter maps its own ID scheme to this field. Similarly, `MessagingPort` uses `messagingThreadId` (not `discordThreadId`) and `VcsPort` uses `externalId` throughout.
 
 ```typescript
 // src/domain/syncService.ts
 export class SyncService {
   constructor(
-    private discord: DiscordPort,
-    private github: GitHubPort,
+    private messaging: MessagingPort,   // was: discord: DiscordPort
+    private vcs: VcsPort,               // was: github: GitHubPort
     private store: ThreadRepository,
     private comments: CommentRepository,
   ) {}
 
-  // Called by Discord event handlers
+  // Called by messaging platform event handlers
   async onThreadCreated(thread: SynchronizedThread, messageBody: string): Promise<void>
-  async onMessagePosted(threadId: string, messageId: string, body: string): Promise<void>
-  async onMessageDeleted(threadId: string, messageId: string): Promise<void>
-  async onThreadArchived(threadId: string): Promise<void>
-  async onThreadUnarchived(threadId: string): Promise<void>
-  async onThreadLocked(threadId: string): Promise<void>
-  async onThreadUnlocked(threadId: string): Promise<void>
-  async onThreadDeleted(threadId: string): Promise<void>
-  async onStartup(client: Client): Promise<void>
+  async onMessagePosted(messagingThreadId: string, messageId: string, body: string): Promise<void>
+  async onMessageDeleted(messagingThreadId: string, messageId: string): Promise<void>
+  async onThreadArchived(messagingThreadId: string): Promise<void>
+  async onThreadUnarchived(messagingThreadId: string): Promise<void>
+  async onThreadLocked(messagingThreadId: string): Promise<void>
+  async onThreadUnlocked(messagingThreadId: string): Promise<void>
+  async onThreadDeleted(messagingThreadId: string): Promise<void>
+  async onStartup(client: unknown): Promise<void>
 
-  // Called by GitHub webhook handlers
-  async onIssueOpened(issue: GitIssue): Promise<void>
-  async onIssueClosed(nodeId: string): Promise<void>
-  async onIssueReopened(nodeId: string): Promise<void>
-  async onIssueLocked(nodeId: string): Promise<void>
-  async onIssueUnlocked(nodeId: string): Promise<void>
-  async onCommentCreated(nodeId: string, commentId: number, body: string, login: string, avatarUrl: string): Promise<void>
-  async onCommentEdited(nodeId: string, commentId: number, body: string, login: string, avatarUrl: string): Promise<void>
-  async onCommentDeleted(nodeId: string, commentId: number): Promise<void>
+  // Called by VCS webhook handlers
+  async onIssueOpened(issue: TrackedIssue): Promise<void>
+  async onIssueClosed(externalId: string): Promise<void>
+  async onIssueReopened(externalId: string): Promise<void>
+  async onIssueLocked(externalId: string): Promise<void>
+  async onIssueUnlocked(externalId: string): Promise<void>
+  async onCommentCreated(externalId: string, commentId: string, body: string, author: AuthorIdentity): Promise<void>
+  async onCommentEdited(externalId: string, commentId: string, body: string, author: AuthorIdentity): Promise<void>
+  async onCommentDeleted(externalId: string, commentId: string): Promise<void>
+}
+```
+
+**MessagingPort impersonation design (navigator decision 2026-03-19):** Discord supports webhook impersonation (send as a specific user identity). Teams does not support this natively. The port interface includes optional impersonation so Discord implements it fully and other adapters fall back gracefully — no platform is blocked:
+
+```typescript
+// src/domain/ports.ts
+export interface AuthorIdentity {
+  login: string;
+  avatarUrl?: string;
+}
+
+export interface MessagingPort {
+  // All adapters implement these
+  createThread(title: string, body: string, tags: string[]): Promise<string>
+  postMessage(messagingThreadId: string, body: string): Promise<string>
+  editMessage(messagingThreadId: string, messageId: string, body: string): Promise<void>
+  deleteMessage(messagingThreadId: string, messageId: string): Promise<void>
+  archiveThread(messagingThreadId: string): Promise<void>
+  unarchiveThread(messagingThreadId: string): Promise<void>
+
+  // Optional — adapters that support impersonation implement this;
+  // adapters that don't (Teams, plain Slack bot) fall back to postMessage
+  postMessageAs?(messagingThreadId: string, body: string, author: AuthorIdentity): Promise<string>
+}
+
+export interface VcsPort {
+  createIssue(title: string, body: string, labels: string[]): Promise<TrackedIssue>
+  closeIssue(externalId: string): Promise<void>
+  reopenIssue(externalId: string): Promise<void>
+  lockIssue(externalId: string): Promise<void>
+  unlockIssue(externalId: string): Promise<void>
+  postComment(externalId: string, body: string): Promise<string>
+  editComment(externalId: string, commentId: string, body: string): Promise<void>
+  deleteComment(externalId: string, commentId: string): Promise<void>
+  // Startup reconciliation — fetch all open issues with their messaging join keys
+  listActiveIssues(): Promise<TrackedIssue[]>
 }
 ```
 
@@ -162,7 +210,7 @@ domain/*  →  infrastructure/config.ts, infrastructure/logger.ts
 - **Appetite:** Medium
 - **In scope:** Full restructure to target layout; syncService extraction; all handler files become thin translators
 - **No-gos:** Changing sync behavior, changing Discord/GitHub API interactions, adding new features during restructure
-- **Do first:** DGB-1 (ThreadRepository), DGB-2 (deduplication), DGB-3 (config), DGB-4 (surface area) — this restructure is cleaner if those are done first
+- **Do first:** DGB-1 (ThreadRepository), DGB-2 (deduplication), DGB-3 (config), DGB-4 (surface area), DGB-12 (local mapping store) — this restructure is cleaner if those are done first. DGB-12 in particular removes the "Discord URL in GitHub body" join strategy, which affects how commentRepository.ts is designed
 - **Not required before starting:** DGB-5 through DGB-9 can follow after or in parallel
 
 ## Risks & Assumptions

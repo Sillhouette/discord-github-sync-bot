@@ -12,7 +12,7 @@ import {
   getGithubUrl,
   logger,
 } from "../logger";
-import { store } from "../store";
+import { threadRepository } from "../store";
 import { stripImageMarkdown } from "../discord/discordActions";
 
 /**
@@ -267,7 +267,7 @@ export async function createIssue(thread: Thread, params: Message) {
 
   try {
     const labels = appliedTags?.map(
-      (id) => store.availableTags.find((item) => item.id === id)?.name || "",
+      (id) => threadRepository.getAvailableTags().find((item) => item.id === id)?.name || "",
     );
 
     const body = await getIssueBody(params);
@@ -279,9 +279,11 @@ export async function createIssue(thread: Thread, params: Message) {
     });
 
     if (response && response.data) {
-      thread.node_id = response.data.node_id;
-      thread.body = response.data.body!;
-      thread.number = response.data.number;
+      threadRepository.updateThread(thread.id, {
+        node_id: response.data.node_id,
+        body: response.data.body!,
+        number: response.data.number,
+      });
       info(Actions.Created, thread);
     } else {
       error("Failed to create issue - No response data", thread);

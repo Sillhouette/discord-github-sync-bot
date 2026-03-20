@@ -1,17 +1,58 @@
 import { GuildForumTag } from "discord.js";
 import { Thread } from "./interfaces";
 
-class Store {
-  threads: Thread[] = [];
-  availableTags: GuildForumTag[] = [];
+export class ThreadRepository {
+  private threads: Thread[] = [];
+  private availableTags: GuildForumTag[] = [];
 
-  deleteThread(id: string | undefined) {
-    const index = this.threads.findIndex((obj) => obj.id === id);
+  addThread(thread: Thread): void {
+    this.threads.push(thread);
+  }
+
+  removeThread(id: string | undefined): void {
+    if (id === undefined) return;
+    const index = this.threads.findIndex((t) => t.id === id);
     if (index !== -1) {
       this.threads.splice(index, 1);
     }
-    return this.threads;
+  }
+
+  updateThread(id: string, patch: Partial<Thread>): void {
+    const thread = this.threads.find((t) => t.id === id);
+    if (thread) {
+      Object.assign(thread, patch);
+    }
+  }
+
+  findByDiscordId(id: string): Thread | undefined {
+    return this.threads.find((t) => t.id === id);
+  }
+
+  findByNodeId(nodeId: string): Thread | undefined {
+    return this.threads.find((t) => t.node_id === nodeId);
+  }
+
+  getAll(): readonly Thread[] {
+    return this.threads.slice();
+  }
+
+  loadThreads(threads: Thread[]): void {
+    this.threads = threads;
+  }
+
+  setAvailableTags(tags: GuildForumTag[]): void {
+    this.availableTags = [...tags];
+  }
+
+  getAvailableTags(): readonly GuildForumTag[] {
+    return this.availableTags;
+  }
+
+  /** Reset all state. Intended for use in tests only. */
+  clear(): void {
+    this.threads = [];
+    this.availableTags = [];
   }
 }
 
-export const store = new Store();
+export const threadRepository = new ThreadRepository();

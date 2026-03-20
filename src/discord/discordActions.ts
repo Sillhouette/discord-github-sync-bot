@@ -9,7 +9,7 @@ import {
   logger,
 } from "../logger";
 import { saveCommentMapping } from "../commentMap";
-import { store } from "../store";
+import { threadRepository } from "../store";
 import client from "./discord";
 
 const info = (action: ActionValue, thread: Thread) =>
@@ -83,15 +83,13 @@ export async function createThread({
       name: title,
       appliedTags,
     });
-    const thread = store.threads.find((thread) => thread.id === id);
+    const thread = threadRepository.findByDiscordId(id);
     if (!thread) {
       logger.warn(`createThread: Discord thread ${id} created but not found in store — node_id may not be set`);
       return;
     }
 
-    thread.body = body;
-    thread.node_id = node_id;
-    thread.number = number;
+    threadRepository.updateThread(id, { body, node_id, number });
 
     info(Actions.Created, thread);
   } catch (err) {
@@ -280,7 +278,7 @@ export async function archiveThread(node_id: string | undefined) {
 
   info(Actions.Closed, thread);
 
-  thread.archived = true;
+  threadRepository.updateThread(thread.id, { archived: true });
   try {
     await channel.setArchived(true);
   } catch (err) {
@@ -294,7 +292,7 @@ export async function unarchiveThread(node_id: string | undefined) {
 
   info(Actions.Reopened, thread);
 
-  thread.archived = false;
+  threadRepository.updateThread(thread.id, { archived: false });
   try {
     await channel.setArchived(false);
   } catch (err) {
@@ -308,11 +306,10 @@ export async function lockThread(node_id: string | undefined) {
 
   info(Actions.Locked, thread);
 
-  thread.locked = true;
+  threadRepository.updateThread(thread.id, { locked: true });
   try {
     if (channel.archived) {
-      thread.lockArchiving = true;
-      thread.lockLocking = true;
+      threadRepository.updateThread(thread.id, { lockArchiving: true, lockLocking: true });
       await channel.setArchived(false);
       await channel.setLocked(true);
       await channel.setArchived(true);
@@ -330,11 +327,10 @@ export async function unlockThread(node_id: string | undefined) {
 
   info(Actions.Unlocked, thread);
 
-  thread.locked = false;
+  threadRepository.updateThread(thread.id, { locked: false });
   try {
     if (channel.archived) {
-      thread.lockArchiving = true;
-      thread.lockLocking = true;
+      threadRepository.updateThread(thread.id, { lockArchiving: true, lockLocking: true });
       await channel.setArchived(false);
       await channel.setLocked(false);
       await channel.setArchived(true);
@@ -352,7 +348,7 @@ export async function deleteThread(node_id: string | undefined) {
 
   info(Actions.Deleted, thread);
 
-  store.deleteThread(thread?.id);
+  threadRepository.removeThread(thread?.id);
   try {
     await channel.delete();
   } catch (err) {
@@ -367,7 +363,7 @@ export async function getThreadChannel(node_id: string | undefined): Promise<{
   let channel: ThreadChannel<boolean> | undefined;
   if (!node_id) return { thread: undefined, channel };
 
-  const thread = store.threads.find((thread) => thread.node_id === node_id);
+  const thread = threadRepository.findByNodeId(node_id);
   if (!thread) return { thread, channel };
 
   channel = <ThreadChannel | undefined>client.channels.cache.get(thread.id);
